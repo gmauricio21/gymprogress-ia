@@ -64,6 +64,12 @@ export default function DashboardPage() {
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
 
+  const [dailyUsage, setDailyUsage] = useState({
+    used: 0,
+    limit: 10,
+    remaining: 10,
+  });
+
   const [profile, setProfile] = useState<ProfileData>({
     age: "",
     gender: "",
@@ -91,6 +97,19 @@ export default function DashboardPage() {
 
       setUserId(user.uid);
       setUserEmail(user.email ?? "");
+
+      const token = await user.getIdToken();
+
+      const usageResponse = await fetch("http://localhost:3001/chat/usage", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (usageResponse.ok) {
+        const usageData = await usageResponse.json();
+        setDailyUsage(usageData);
+      }
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -187,10 +206,17 @@ export default function DashboardPage() {
     try {
       setIsSendingMessage(true);
 
+      const token = await auth.currentUser?.getIdToken();
+
+      if (!token) {
+        throw new Error("Usuário não autenticado.");
+      }
+
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: trimmedMessage,
@@ -199,11 +225,28 @@ export default function DashboardPage() {
 
       const data = await response.json();
 
+      if (!response.ok) {
+        setChatMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: data.message ?? "Erro ao consultar a IA.",
+          },
+        ]);
+        return;
+      }
+
+      if (data.usage) {
+        setDailyUsage(data.usage);
+      }
+
       setChatMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content: data.answer,
+          content:
+            data.answer ??
+            "Não foi possível obter uma resposta da IA no momento.",
         },
       ]);
     } catch {
@@ -220,14 +263,13 @@ export default function DashboardPage() {
     }
   }
 
-  function normalizeMarkdown(text: string) {
-    return text
+  function normalizeMarkdown(text?: string) {
+    return (text ?? "")
       .replace(/\n{3,}/g, "\n\n")
       .replace(/^(\d+)\.\s*\n\s*/gm, "$1. ")
       .replace(/\n\s*\n(?=\s*[-*•])/g, "\n")
       .trim();
   }
-
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-zinc-950 text-white">
       {sidebarOpen && (
@@ -283,6 +325,10 @@ export default function DashboardPage() {
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{userEmail}</p>
+
+                <p className="mt-1 text-xs text-zinc-500">
+                  Mensagens hoje: {dailyUsage.used}/{dailyUsage.limit}
+                </p>
               </div>
             </div>
 
@@ -331,6 +377,17 @@ export default function DashboardPage() {
             GymProgress <span className="text-emerald-400">IA</span>
           </span>
         </div>
+
+        {!sidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir painel"
+            className="absolute left-4 top-4 z-10 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/10 hover:text-white lg:flex"
+          >
+            <PanelLeftOpen className="h-5 w-5" />
+          </button>
+        )}
 
         <div className="custom-scrollbar flex flex-1 flex-col overflow-y-auto bg-zinc-950 px-6 pb-8 pt-8">
           {chatMessages.length === 0 ? (
