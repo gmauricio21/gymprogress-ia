@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,6 +13,7 @@ import { adminAuth } from '../firebase-admin';
 
 type ChatBody = {
   message: string;
+  conversationId: string | null;
 };
 
 @Controller('chat')
@@ -22,18 +24,36 @@ export class ChatController {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Usuário não autenticado.');
     }
-
     const token = authorization.replace('Bearer ', '');
     const decodedToken = await adminAuth.verifyIdToken(token);
-
     return decodedToken.uid;
   }
 
   @Get('usage')
   async getUsage(@Headers('authorization') authorization?: string) {
     const userId = await this.getUserId(authorization);
-
     return this.chatService.getDailyUsage(userId);
+  }
+
+  @Post('conversations')
+  async createConversation(@Headers('authorization') authorization?: string) {
+    const userId = await this.getUserId(authorization);
+    return this.chatService.createConversation(userId);
+  }
+
+  @Get('conversations')
+  async getConversations(@Headers('authorization') authorization?: string) {
+    const userId = await this.getUserId(authorization);
+    return this.chatService.getConversations(userId);
+  }
+
+  @Get('conversations/:conversationId/messages')
+  async getMessages(
+    @Param('conversationId') conversationId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const userId = await this.getUserId(authorization);
+    return this.chatService.getMessages(userId, conversationId);
   }
 
   @Post()
@@ -46,7 +66,10 @@ export class ChatController {
     }
 
     const userId = await this.getUserId(authorization);
-
-    return this.chatService.sendMessage(userId, body.message);
+    return this.chatService.sendMessage(
+      userId,
+      body.conversationId ?? null,
+      body.message,
+    );
   }
 }

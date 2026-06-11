@@ -19,6 +19,17 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type Conversation = {
+  id: string;
+  title: string;
+  updatedAt: { seconds: number } | null;
+};
+
 export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [message, setMessage] = useState("");
@@ -26,37 +37,6 @@ export default function DashboardPage() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  type ChatMessage = {
-    role: "user" | "assistant";
-    content: string;
-  };
-
-  function handleMessageChange(value: string) {
-    setMessage(value);
-
-    requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-
-      if (!textarea) return;
-
-      const maxHeight = 224;
-
-      textarea.style.height = "auto";
-
-      const scrollHeight = textarea.scrollHeight;
-      const nextHeight = Math.min(scrollHeight, maxHeight);
-
-      textarea.style.height = `${nextHeight}px`;
-      textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
-
-      const isSmallScreen = window.innerWidth < 640;
-
-      setIsComposerExpanded(
-        isSmallScreen || value.length > 55 || value.includes("\n"),
-      );
-    });
-  }
 
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -69,6 +49,11 @@ export default function DashboardPage() {
     limit: 10,
     remaining: 10,
   });
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
 
   const [profile, setProfile] = useState<ProfileData>({
     age: "",
@@ -88,6 +73,68 @@ export default function DashboardPage() {
     limitations: "",
   });
 
+  function handleMessageChange(value: string) {
+    setMessage(value);
+
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const maxHeight = 224;
+      textarea.style.height = "auto";
+      const scrollHeight = textarea.scrollHeight;
+      const nextHeight = Math.min(scrollHeight, maxHeight);
+      textarea.style.height = `${nextHeight}px`;
+      textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+
+      const isSmallScreen = window.innerWidth < 640;
+      setIsComposerExpanded(
+        isSmallScreen || value.length > 55 || value.includes("\n"),
+      );
+    });
+  }
+
+  async function loadConversations(token: string, activeId?: string) {
+    const res = await fetch("http://localhost:3001/chat/conversations", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setConversations(data);
+      if (activeId) {
+        setActiveConversationId(activeId);
+      }
+    }
+  }
+
+  async function handleSelectConversation(conversationId: string) {
+    setActiveConversationId(conversationId);
+    setChatMessages([]);
+
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return;
+
+    const res = await fetch(
+      `http://localhost:3001/chat/conversations/${conversationId}/messages`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (res.ok) {
+      const messages = await res.json();
+      setChatMessages(
+        messages.map((m: { role: string; content: string }) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      );
+    }
+  }
+
+  function handleNewChat() {
+    setActiveConversationId(null);
+    setChatMessages([]);
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -101,15 +148,15 @@ export default function DashboardPage() {
       const token = await user.getIdToken();
 
       const usageResponse = await fetch("http://localhost:3001/chat/usage", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (usageResponse.ok) {
         const usageData = await usageResponse.json();
         setDailyUsage(usageData);
       }
+
+      await loadConversations(token);
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -128,7 +175,6 @@ export default function DashboardPage() {
 
         setProfile(loadedProfile);
         setSavedProfile(loadedProfile);
-
         setShowWelcomeModal(!data.profileCompleted);
       }
     });
@@ -144,12 +190,8 @@ export default function DashboardPage() {
     }
 
     handleResize();
-
     mediaQuery.addEventListener("change", handleResize);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleResize);
-    };
+    return () => mediaQuery.removeEventListener("change", handleResize);
   }, []);
 
   async function handleSaveProfile() {
@@ -184,15 +226,11 @@ export default function DashboardPage() {
     e.preventDefault();
 
     const trimmedMessage = message.trim();
-
     if (!trimmedMessage || isSendingMessage) return;
 
     setChatMessages((current) => [
       ...current,
-      {
-        role: "user",
-        content: trimmedMessage,
-      },
+      { role: "user", content: trimmedMessage },
     ]);
 
     setMessage("");
@@ -207,10 +245,7 @@ export default function DashboardPage() {
       setIsSendingMessage(true);
 
       const token = await auth.currentUser?.getIdToken();
-
-      if (!token) {
-        throw new Error("Usuário não autenticado.");
-      }
+      if (!token) throw new Error("Usuário não autenticado.");
 
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
@@ -220,6 +255,7 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({
           message: trimmedMessage,
+          conversationId: activeConversationId,
         }),
       });
 
@@ -236,9 +272,13 @@ export default function DashboardPage() {
         return;
       }
 
-      if (data.usage) {
-        setDailyUsage(data.usage);
+      if (data.conversationId) {
+        setActiveConversationId(data.conversationId);
       }
+
+      const newConvId = data.conversationId;
+
+      if (data.usage) setDailyUsage(data.usage);
 
       setChatMessages((current) => [
         ...current,
@@ -249,6 +289,8 @@ export default function DashboardPage() {
             "Não foi possível obter uma resposta da IA no momento.",
         },
       ]);
+
+      await loadConversations(token, newConvId);
     } catch {
       setChatMessages((current) => [
         ...current,
@@ -270,6 +312,7 @@ export default function DashboardPage() {
       .replace(/\n\s*\n(?=\s*[-*•])/g, "\n")
       .trim();
   }
+
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-zinc-950 text-white">
       {sidebarOpen && (
@@ -288,7 +331,6 @@ export default function DashboardPage() {
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
                 <Dumbbell className="h-4 w-4" />
               </span>
-
               <span className="tracking-tight">
                 GymProgress <span className="text-emerald-400">IA</span>
               </span>
@@ -305,7 +347,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="p-3">
-            <button className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600">
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600"
+            >
               <Plus className="h-4 w-4" />
               Novo chat
             </button>
@@ -315,6 +361,27 @@ export default function DashboardPage() {
             <p className="px-2 py-1 text-xs uppercase tracking-wide text-zinc-500">
               Recentes
             </p>
+
+            {conversations.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-zinc-600">
+                Nenhuma conversa ainda.
+              </p>
+            ) : (
+              conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  type="button"
+                  onClick={() => handleSelectConversation(conv.id)}
+                  className={`mt-1 w-full truncate rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/10 ${
+                    activeConversationId === conv.id
+                      ? "bg-white/10 text-white"
+                      : "text-zinc-400"
+                  }`}
+                >
+                  {conv.title}
+                </button>
+              ))
+            )}
           </div>
 
           <div className="border-t border-white/10 p-3">
@@ -325,7 +392,6 @@ export default function DashboardPage() {
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{userEmail}</p>
-
                 <p className="mt-1 text-xs text-zinc-500">
                   Mensagens hoje: {dailyUsage.used}/{dailyUsage.limit}
                 </p>
@@ -372,7 +438,6 @@ export default function DashboardPage() {
               <PanelLeftOpen className="h-5 w-5" />
             </button>
           )}
-
           <span className="ml-3 text-sm font-semibold text-zinc-300">
             GymProgress <span className="text-emerald-400">IA</span>
           </span>
@@ -397,12 +462,10 @@ export default function DashboardPage() {
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400">
                     <Sparkles className="h-7 w-7" />
                   </div>
-
                   <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
                     Seu Personal Trainer{" "}
                     <span className="text-emerald-400">Inteligente</span>
                   </h1>
-
                   <p className="mx-auto mt-3 max-w-2xl text-zinc-400">
                     Treine com ajuda da Inteligência Artificial. Obtenha
                     sugestões de treino, dicas de exercícios e orientações para
@@ -539,6 +602,7 @@ export default function DashboardPage() {
           </form>
         </div>
       </main>
+
       <ProfileModal
         isOpen={showProfileModal}
         mode="profile"

@@ -1,6 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Content, GoogleGenerativeAI } from '@google/generative-ai';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  DocumentData,
+  FieldValue,
+  QuerySnapshot,
+} from 'firebase-admin/firestore';
 import { adminDb } from '../firebase-admin';
 
 type UsageData = {
@@ -14,11 +19,7 @@ export class ChatService {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY não configurada.');
-    }
-
+    if (!apiKey) throw new Error('GEMINI_API_KEY não configurada.');
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
 
@@ -33,7 +34,6 @@ export class ChatService {
 
   async getDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
-
     const usageRef = adminDb
       .collection('users')
       .doc(userId)
@@ -42,7 +42,6 @@ export class ChatService {
 
     const usageSnap = await usageRef.get();
     const usageData = usageSnap.data() as UsageData | undefined;
-
     const used = usageSnap.exists ? (usageData?.count ?? 0) : 0;
 
     return {
@@ -55,7 +54,6 @@ export class ChatService {
 
   private async incrementDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
-
     const usageRef = adminDb
       .collection('users')
       .doc(userId)
@@ -65,7 +63,6 @@ export class ChatService {
     return adminDb.runTransaction(async (transaction) => {
       const usageSnap = await transaction.get(usageRef);
       const usageData = usageSnap.data() as UsageData | undefined;
-
       const currentCount = usageSnap.exists ? (usageData?.count ?? 0) : 0;
 
       if (currentCount >= this.DAILY_LIMIT) {
@@ -76,7 +73,6 @@ export class ChatService {
       }
 
       const newCount = currentCount + 1;
-
       transaction.set(
         usageRef,
         {
@@ -97,7 +93,60 @@ export class ChatService {
     });
   }
 
-  async sendMessage(userId: string, message: string) {
+  // Cria uma nova conversa e retorna o ID
+  async createConversation(userId: string) {
+    const convRef = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('conversations')
+      .doc();
+
+    await convRef.set({
+      title: 'Nova conversa',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { conversationId: convRef.id };
+  }
+
+  // Lista todas as conversas do usuário
+  async getConversations(userId: string) {
+    const snap = await adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('conversations')
+      .orderBy('updatedAt', 'desc')
+      .get();
+
+    return snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  }
+
+  // Busca as mensagens de uma conversa
+  async getMessages(userId: string, conversationId: string) {
+    const snap = await adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .get();
+
+    return snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  }
+
+  async sendMessage(
+    userId: string,
+    conversationId: string | null,
+    message: string,
+  ) {
     const currentUsage = await this.getDailyUsage(userId);
 
     if (currentUsage.used >= this.DAILY_LIMIT) {
@@ -106,6 +155,35 @@ export class ChatService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+
+    // Se já existe uma conversa, busca o histórico
+    // Se não existe, deixa para criar só após a IA responder
+    let convId = conversationId;
+    let historySnap: QuerySnapshot<DocumentData> | undefined;
+
+    if (convId) {
+      const messagesRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId)
+        .collection('messages');
+
+      historySnap = await messagesRef.orderBy('createdAt', 'asc').get();
+    }
+
+    const history: Content[] = historySnap
+      ? historySnap.docs.map((doc) => {
+          const data = doc.data() as {
+            role: 'user' | 'model';
+            content: string;
+          };
+          return {
+            role: data.role,
+            parts: [{ text: data.content }],
+          };
+        })
+      : [];
 
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
@@ -132,29 +210,55 @@ Não substitua orientação de médicos, fisioterapeutas ou profissionais de edu
 Se houver dor, lesão grave ou condição médica, recomende procurar um profissional qualificado.
 
 Responda em português do Brasil, de forma clara, objetiva e amigável.
-      `,
+    `,
     });
 
     try {
       const result = await model.generateContent({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: message }],
-          },
-        ],
+        contents: [...history, { role: 'user', parts: [{ text: message }] }],
       });
 
-      const usage = await this.incrementDailyUsage(userId);
+      const answer = result.response.text();
 
-      return {
-        answer: result.response.text(),
-        usage,
-      };
-    } catch (error: unknown) {
-      if (error instanceof HttpException) {
-        throw error;
+      // Só cria a conversa agora, após a IA responder com sucesso
+      if (!convId) {
+        const created = await this.createConversation(userId);
+        convId = created.conversationId;
       }
+
+      const convRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId);
+
+      const messagesRef = convRef.collection('messages');
+      const usage = await this.incrementDailyUsage(userId);
+      const now = FieldValue.serverTimestamp();
+
+      await messagesRef.add({ role: 'user', content: message, createdAt: now });
+      await messagesRef.add({
+        role: 'assistant',
+        content: answer,
+        createdAt: now,
+      });
+
+      const isFirstMessage: boolean = !historySnap || historySnap.empty;
+
+      await convRef.set(
+        {
+          updatedAt: now,
+          ...(isFirstMessage && {
+            title: message.slice(0, 40) + (message.length > 40 ? '...' : ''),
+          }),
+        },
+        { merge: true },
+      );
+
+      // Retorna convId (nunca null aqui) em vez de conversationId
+      return { answer, usage, conversationId: convId };
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
 
       if (
         typeof error === 'object' &&
