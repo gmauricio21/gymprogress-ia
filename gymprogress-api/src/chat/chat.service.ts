@@ -12,6 +12,15 @@ type UsageData = {
   count?: number;
 };
 
+type UserProfile = {
+  age?: string;
+  gender?: string;
+  weight?: string;
+  height?: string;
+  goal?: string;
+  limitations?: string;
+};
+
 @Injectable()
 export class ChatService {
   private genAI: GoogleGenerativeAI;
@@ -93,6 +102,12 @@ export class ChatService {
     });
   }
 
+  private async getUserProfile(userId: string): Promise<UserProfile> {
+    const userSnap = await adminDb.collection('users').doc(userId).get();
+    if (!userSnap.exists) return {};
+    return userSnap.data() as UserProfile;
+  }
+
   // Cria uma nova conversa e retorna o ID
   async createConversation(userId: string) {
     const convRef = adminDb
@@ -158,6 +173,8 @@ export class ChatService {
 
     // Se já existe uma conversa, busca o histórico
     // Se não existe, deixa para criar só após a IA responder
+    const userProfile = await this.getUserProfile(userId);
+
     let convId = conversationId;
     let historySnap: QuerySnapshot<DocumentData> | undefined;
 
@@ -175,20 +192,30 @@ export class ChatService {
     const history: Content[] = historySnap
       ? historySnap.docs.map((doc) => {
           const data = doc.data() as {
-            role: 'user' | 'model';
+            role: 'user' | 'model' | 'assistant';
             content: string;
           };
           return {
-            role: data.role,
+            role: data.role === 'assistant' ? 'model' : data.role, // ← conversão aqui
             parts: [{ text: data.content }],
           };
         })
-      : [];
+      : []; // ← adiciona isso
 
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       systemInstruction: `
 Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
+
+Dados do usuário atual:
+- Idade: ${userProfile.age ?? 'não informada'}
+- Gênero: ${userProfile.gender ?? 'não informado'}
+- Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
+- Altura: ${userProfile.height ? userProfile.height + ' cm' : 'não informada'}
+- Objetivo: ${userProfile.goal ?? 'não informado'}
+- Restrições/Limitações: ${userProfile.limitations ?? 'nenhuma informada'}
+
+Use sempre essas informações para personalizar suas respostas. Adapte a intensidade, volume e escolha dos exercícios de acordo com a idade, objetivo e limitações do usuário.
 
 Responda apenas perguntas relacionadas a:
 - musculação;
@@ -235,12 +262,19 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       const messagesRef = convRef.collection('messages');
       const usage = await this.incrementDailyUsage(userId);
       const now = FieldValue.serverTimestamp();
+      const userMsgRef = messagesRef.doc();
+      const assistantMsgRef = messagesRef.doc();
 
-      await messagesRef.add({ role: 'user', content: message, createdAt: now });
-      await messagesRef.add({
-        role: 'assistant',
+      await userMsgRef.set({ role: 'user', content: message, createdAt: now });
+
+      // Pequeno delay garante timestamps diferentes
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const assistantNow = FieldValue.serverTimestamp();
+      await assistantMsgRef.set({
+        role: 'model',
         content: answer,
-        createdAt: now,
+        createdAt: assistantNow,
       });
 
       const isFirstMessage: boolean = !historySnap || historySnap.empty;
@@ -277,5 +311,22 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async deleteConversation(userId: string, conversationId: string) {
+    const convRef = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('conversations')
+      .doc(conversationId);
+
+    // Deleta todas as mensagens da subcoleção primeiro
+    const messagesSnap = await convRef.collection('messages').get();
+    const batch = adminDb.batch();
+    messagesSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    batch.delete(convRef);
+    await batch.commit();
+
+    return { success: true };
   }
 }

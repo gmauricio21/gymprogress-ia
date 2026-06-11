@@ -16,6 +16,7 @@ import {
   Send,
   Sparkles,
   User,
+  Trash2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -37,6 +38,9 @@ export default function DashboardPage() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [conversationToDelete, setConversationToDelete] =
+    useState<Conversation | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -305,6 +309,35 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleDeleteConversation() {
+    if (!conversationToDelete) return;
+    setIsDeletingConversation(true);
+
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+
+      const res = await fetch(
+        `http://localhost:3001/chat/conversations/${conversationToDelete.id}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (res.ok) {
+        if (activeConversationId === conversationToDelete.id) {
+          setActiveConversationId(null);
+          setChatMessages([]);
+        }
+        await loadConversations(token);
+        setConversationToDelete(null);
+      }
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }
+
   function normalizeMarkdown(text?: string) {
     return (text ?? "")
       .replace(/\n{3,}/g, "\n\n")
@@ -357,7 +390,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-2 text-sm text-zinc-400">
+          <div className="custom-scrollbar flex-1 overflow-y-auto px-3 py-2 text-sm text-zinc-400">
             <p className="px-2 py-1 text-xs uppercase tracking-wide text-zinc-500">
               Recentes
             </p>
@@ -368,18 +401,36 @@ export default function DashboardPage() {
               </p>
             ) : (
               conversations.map((conv) => (
-                <button
+                <div
                   key={conv.id}
-                  type="button"
-                  onClick={() => handleSelectConversation(conv.id)}
-                  className={`mt-1 w-full truncate rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/10 ${
-                    activeConversationId === conv.id
-                      ? "bg-white/10 text-white"
-                      : "text-zinc-400"
+                  className={`group mt-1 flex items-center gap-1 rounded-lg transition hover:bg-white/10 ${
+                    activeConversationId === conv.id ? "bg-white/10" : ""
                   }`}
                 >
-                  {conv.title}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConversation(conv.id)}
+                    className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm transition ${
+                      activeConversationId === conv.id
+                        ? "text-white"
+                        : "text-zinc-400"
+                    }`}
+                  >
+                    {conv.title}
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-label="Excluir conversa"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConversationToDelete(conv);
+                    }}
+                    className="mr-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-zinc-600 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -619,6 +670,49 @@ export default function DashboardPage() {
         onSave={handleSaveProfile}
         onClose={() => setShowWelcomeModal(false)}
       />
+
+      {conversationToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <h2 className="text-lg font-bold text-white">Excluir Chat?</h2>
+
+            <p className="mt-2 text-sm text-zinc-400">
+              Isso excluirá{" "}
+              <span className="font-semibold text-white">
+                {conversationToDelete.title}
+              </span>
+              .
+            </p>
+
+            <p className="mt-1 text-xs text-zinc-500">
+              Essa ação é permanente e não pode ser desfeita.
+            </p>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConversationToDelete(null)}
+                disabled={isDeletingConversation}
+                className="flex-1 cursor-pointer rounded-full border border-white/10 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteConversation}
+                disabled={isDeletingConversation}
+                className="flex-1 cursor-pointer rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+              >
+                {isDeletingConversation ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

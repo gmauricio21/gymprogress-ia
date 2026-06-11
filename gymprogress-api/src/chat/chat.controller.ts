@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { adminAuth } from '../firebase-admin';
+import { Delete } from '@nestjs/common'; // adicionar Delete ao import
 
 type ChatBody = {
   message: string;
@@ -71,5 +72,14 @@ export class ChatController {
       body.conversationId ?? null,
       body.message,
     );
+  }
+
+  @Delete('conversations/:conversationId')
+  async deleteConversation(
+    @Param('conversationId') conversationId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const userId = await this.getUserId(authorization);
+    return this.chatService.deleteConversation(userId, conversationId);
   }
 }
