@@ -173,6 +173,7 @@ export function RegisterModal({
           weight: null,
           goal: "",
           limitations: "",
+          profileCompleted: false,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },

@@ -71,7 +71,28 @@ export function LoginModal({
     try {
       setLoading(true);
 
-      await signInWithPopup(auth, googleProvider);
+      const credential = await signInWithPopup(auth, googleProvider);
+      const user = credential.user;
+
+      const { doc, getDoc, setDoc, serverTimestamp } =
+        await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          name: user.displayName ?? "",
+          email: user.email ?? "",
+          photoURL: user.photoURL ?? null,
+          provider: "google",
+          profileCompleted: false,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setTimeout(() => {
         router.push("/dashboard");

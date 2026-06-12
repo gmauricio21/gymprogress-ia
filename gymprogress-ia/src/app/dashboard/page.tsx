@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [conversationToDelete, setConversationToDelete] =
     useState<Conversation | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
@@ -47,11 +48,12 @@ export default function DashboardPage() {
 
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState("");
 
   const [dailyUsage, setDailyUsage] = useState({
     used: 0,
-    limit: 10,
-    remaining: 10,
+    limit: 15,
+    remaining: 15,
   });
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -139,6 +141,14 @@ export default function DashboardPage() {
     setChatMessages([]);
   }
 
+  function scrollToBottom() {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatMessages]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -167,6 +177,8 @@ export default function DashboardPage() {
 
       if (userSnap.exists()) {
         const data = userSnap.data();
+
+        setUserName(data.name ?? user.displayName ?? "");
 
         const loadedProfile: ProfileData = {
           age: data.age ?? "",
@@ -251,7 +263,13 @@ export default function DashboardPage() {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Usuário não autenticado.");
 
-      const response = await fetch("http://localhost:3001/chat", {
+      // Adiciona mensagem vazia da IA que vai ser preenchida pelo stream
+      setChatMessages((current) => [
+        ...current,
+        { role: "assistant", content: "" },
+      ]);
+
+      const response = await fetch("http://localhost:3001/chat/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -263,47 +281,85 @@ export default function DashboardPage() {
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setChatMessages((current) => [
-          ...current,
-          {
+      if (!response.ok || !response.body) {
+        const data = await response.json();
+        setChatMessages((current) => {
+          const updated = [...current];
+          updated[updated.length - 1] = {
             role: "assistant",
             content: data.message ?? "Erro ao consultar a IA.",
-          },
-        ]);
+          };
+          return updated;
+        });
         return;
       }
 
-      if (data.conversationId) {
-        setActiveConversationId(data.conversationId);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+
+          const json = line.replace("data: ", "").trim();
+          if (!json) continue;
+
+          try {
+            const parsed = JSON.parse(json);
+
+            if (parsed.error) {
+              setChatMessages((current) => {
+                const updated = [...current];
+                updated[updated.length - 1] = {
+                  role: "assistant",
+                  content: parsed.error,
+                };
+                return updated;
+              });
+              return;
+            }
+
+            if (parsed.chunk) {
+              setChatMessages((current) => {
+                const updated = [...current];
+                updated[updated.length - 1] = {
+                  role: "assistant",
+                  content: updated[updated.length - 1].content + parsed.chunk,
+                };
+                return updated;
+              });
+            }
+
+            if (parsed.done) {
+              if (parsed.conversationId) {
+                setActiveConversationId(parsed.conversationId);
+              }
+              if (parsed.usage) setDailyUsage(parsed.usage);
+              await loadConversations(token, parsed.conversationId);
+            }
+          } catch {
+            // ignora linhas malformadas
+          }
+        }
       }
-
-      const newConvId = data.conversationId;
-
-      if (data.usage) setDailyUsage(data.usage);
-
-      setChatMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content:
-            data.answer ??
-            "Não foi possível obter uma resposta da IA no momento.",
-        },
-      ]);
-
-      await loadConversations(token, newConvId);
     } catch {
-      setChatMessages((current) => [
-        ...current,
-        {
+      setChatMessages((current) => {
+        const updated = [...current];
+        updated[updated.length - 1] = {
           role: "assistant",
           content:
             "Não foi possível conectar com a IA no momento. Tente novamente em instantes.",
-        },
-      ]);
+        };
+        return updated;
+      });
     } finally {
       setIsSendingMessage(false);
     }
@@ -442,7 +498,9 @@ export default function DashboardPage() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{userEmail}</p>
+                <p className="truncate text-sm font-medium">
+                  {userName || userEmail}
+                </p>
                 <p className="mt-1 text-xs text-zinc-500">
                   Mensagens hoje: {dailyUsage.used}/{dailyUsage.limit}
                 </p>
@@ -594,13 +652,7 @@ export default function DashboardPage() {
                 </div>
               ))}
 
-              {isSendingMessage && (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-zinc-400">
-                    Pensando...
-                  </div>
-                </div>
-              )}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
@@ -625,6 +677,12 @@ export default function DashboardPage() {
                   value={message}
                   rows={1}
                   onChange={(e) => handleMessageChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmitMessage(e as unknown as React.FormEvent);
+                    }
+                  }}
                   placeholder="Ex.: monte um treino de pernas para hipertrofia"
                   className={
                     isComposerExpanded

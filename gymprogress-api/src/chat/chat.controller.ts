@@ -2,15 +2,17 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
   Post,
+  Res,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { adminAuth } from '../firebase-admin';
-import { Delete } from '@nestjs/common'; // adicionar Delete ao import
+import type { Response } from 'express';
 
 type ChatBody = {
   message: string;
@@ -71,6 +73,31 @@ export class ChatController {
       userId,
       body.conversationId ?? null,
       body.message,
+    );
+  }
+
+  @Post('stream')
+  async streamMessage(
+    @Body() body: ChatBody,
+    @Res() res: Response,
+    @Headers('authorization') authorization?: string,
+  ) {
+    if (!body?.message || !body.message.trim()) {
+      res.status(400).json({ message: 'Mensagem é obrigatória.' });
+      return;
+    }
+
+    const userId = await this.getUserId(authorization);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    await this.chatService.streamMessage(
+      userId,
+      body.conversationId ?? null,
+      body.message,
+      res,
     );
   }
 

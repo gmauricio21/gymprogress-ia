@@ -1,4 +1,5 @@
 import { Content, GoogleGenerativeAI } from '@google/generative-ai';
+import { Response } from 'express';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -24,7 +25,7 @@ type UserProfile = {
 @Injectable()
 export class ChatService {
   private genAI: GoogleGenerativeAI;
-  private readonly DAILY_LIMIT = 10;
+  private readonly DAILY_LIMIT = 15;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
@@ -76,7 +77,7 @@ export class ChatService {
 
       if (currentCount >= this.DAILY_LIMIT) {
         throw new HttpException(
-          'Você atingiu o limite diário de 10 mensagens. O limite será renovado após 00:00.',
+          'Você atingiu o limite diário de 15 mensagens. O limite será renovado após 00:00.',
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
@@ -166,7 +167,7 @@ export class ChatService {
 
     if (currentUsage.used >= this.DAILY_LIMIT) {
       throw new HttpException(
-        'Você atingiu o limite diário de 10 mensagens. O limite será renovado após 00:00.',
+        'Você atingiu o limite diário de 15 mensagens. O limite será renovado após 00:00.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -328,5 +329,161 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
     await batch.commit();
 
     return { success: true };
+  }
+
+  async streamMessage(
+    userId: string,
+    conversationId: string | null,
+    message: string,
+    res: Response,
+  ) {
+    const currentUsage = await this.getDailyUsage(userId);
+
+    if (currentUsage.used >= this.DAILY_LIMIT) {
+      res.write(
+        `data: ${JSON.stringify({ error: 'Você atingiu o limite diário de mensagens. O limite será renovado após 00:00.' })}\n\n`,
+      );
+      res.end();
+      return;
+    }
+
+    const userProfile = await this.getUserProfile(userId);
+
+    let convId = conversationId;
+    let historySnap: QuerySnapshot<DocumentData> | undefined;
+
+    if (convId) {
+      const messagesRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId)
+        .collection('messages');
+
+      historySnap = await messagesRef.orderBy('createdAt', 'asc').get();
+    }
+
+    const history: Content[] = historySnap
+      ? historySnap.docs.map((doc) => {
+          const data = doc.data() as {
+            role: 'user' | 'model' | 'assistant';
+            content: string;
+          };
+          return {
+            role: data.role === 'assistant' ? 'model' : data.role,
+            parts: [{ text: data.content }],
+          };
+        })
+      : [];
+
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: `
+Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
+
+Dados do usuário atual:
+- Idade: ${userProfile.age ?? 'não informada'}
+- Gênero: ${userProfile.gender ?? 'não informado'}
+- Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
+- Altura: ${userProfile.height ? userProfile.height + ' cm' : 'não informada'}
+- Objetivo: ${userProfile.goal ?? 'não informado'}
+- Restrições/Limitações: ${userProfile.limitations ?? 'nenhuma informada'}
+
+Use sempre essas informações para personalizar suas respostas. Adapte a intensidade, volume e escolha dos exercícios de acordo com a idade, objetivo e limitações do usuário.
+
+Responda apenas perguntas relacionadas a:
+- musculação;
+- academia;
+- exercícios físicos;
+- divisão de treinos;
+- execução de exercícios;
+- hipertrofia;
+- emagrecimento relacionado a treino;
+- condicionamento físico;
+- descanso entre séries;
+- segurança durante exercícios.
+
+Se o usuário perguntar algo fora desse tema, responda educadamente:
+"Posso te ajudar apenas com assuntos relacionados a treinos, academia e exercícios físicos."
+
+Não forneça diagnósticos médicos.
+Não substitua orientação de médicos, fisioterapeutas ou profissionais de educação física.
+Se houver dor, lesão grave ou condição médica, recomende procurar um profissional qualificado.
+
+Responda em português do Brasil, de forma clara, objetiva e amigável.
+    `,
+    });
+
+    try {
+      const streamResult = await model.generateContentStream({
+        contents: [...history, { role: 'user', parts: [{ text: message }] }],
+      });
+
+      let fullAnswer = '';
+
+      for await (const chunk of streamResult.stream) {
+        const text = chunk.text();
+        fullAnswer += text;
+        res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
+      }
+
+      if (!convId) {
+        const created = await this.createConversation(userId);
+        convId = created.conversationId;
+      }
+
+      const convRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId);
+
+      const messagesRef = convRef.collection('messages');
+      const usage = await this.incrementDailyUsage(userId);
+      const now = FieldValue.serverTimestamp();
+
+      await messagesRef
+        .doc()
+        .set({ role: 'user', content: message, createdAt: now });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await messagesRef.doc().set({
+        role: 'model',
+        content: fullAnswer,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      const isFirstMessage: boolean = !historySnap || historySnap.empty;
+
+      await convRef.set(
+        {
+          updatedAt: now,
+          ...(isFirstMessage && {
+            title: message.slice(0, 40) + (message.length > 40 ? '...' : ''),
+          }),
+        },
+        { merge: true },
+      );
+
+      res.write(
+        `data: ${JSON.stringify({ done: true, usage, conversationId: convId })}\n\n`,
+      );
+      res.end();
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'status' in error &&
+        (error as { status: number }).status === 429
+      ) {
+        res.write(
+          `data: ${JSON.stringify({ error: 'O serviço de IA está temporariamente sobrecarregado. Tente novamente em alguns minutos.' })}\n\n`,
+        );
+      } else {
+        res.write(
+          `data: ${JSON.stringify({ error: 'Erro ao consultar a IA. Tente novamente.' })}\n\n`,
+        );
+      }
+      res.end();
+    }
   }
 }
