@@ -6,6 +6,7 @@ import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { ProfileData, ProfileModal } from "@/components/modals/ProfileModal";
+import { WorkoutModal } from "@/components/modals/WorkoutModal";
 import {
   ClipboardList,
   Dumbbell,
@@ -45,6 +46,7 @@ export default function DashboardPage() {
 
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
 
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -527,7 +529,11 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <button className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/20">
+            <button
+              type="button"
+              onClick={() => setShowWorkoutModal(true)}
+              className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
+            >
               <ClipboardList className="h-4 w-4" />
               Ficha de Treino
             </button>
@@ -683,7 +689,7 @@ export default function DashboardPage() {
                       handleSubmitMessage(e as unknown as React.FormEvent);
                     }
                   }}
-                  placeholder="Ex.: monte um treino de pernas para hipertrofia"
+                  placeholder="Escreva uma mensagem..."
                   className={
                     isComposerExpanded
                       ? "custom-scrollbar max-h-56 min-h-[24px] w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-zinc-600"
@@ -727,6 +733,10 @@ export default function DashboardPage() {
         setProfile={setProfile}
         onSave={handleSaveProfile}
         onClose={() => setShowWelcomeModal(false)}
+      />
+      <WorkoutModal
+        isOpen={showWorkoutModal}
+        onClose={() => setShowWorkoutModal(false)}
       />
 
       {conversationToDelete && (
