@@ -47,6 +47,25 @@ export class WorkoutController {
     return this.workoutService.createWorkout(userId, body.name, body.goal);
   }
 
+  @Put(':workoutId')
+  async updateWorkout(
+    @Param('workoutId') workoutId: string,
+    @Body() body: { name: string; goal: string },
+    @Headers('authorization') authorization?: string,
+  ) {
+    if (!body?.name?.trim())
+      throw new BadRequestException('Nome é obrigatório.');
+    if (!body?.goal?.trim())
+      throw new BadRequestException('Objetivo é obrigatório.');
+    const userId = await this.getUserId(authorization);
+    return this.workoutService.updateWorkout(
+      userId,
+      workoutId,
+      body.name,
+      body.goal,
+    );
+  }
+
   @Delete(':workoutId')
   async deleteWorkout(
     @Param('workoutId') workoutId: string,
@@ -56,55 +75,73 @@ export class WorkoutController {
     return this.workoutService.deleteWorkout(userId, workoutId);
   }
 
-  // ─── DIAS ──────────────────────────────────────────────
+  // ─── DIVISÕES ──────────────────────────────────────────
 
-  @Get(':workoutId/days')
-  async getDays(
+  @Get(':workoutId/divisions')
+  async getDivisions(
     @Param('workoutId') workoutId: string,
     @Headers('authorization') authorization?: string,
   ) {
     const userId = await this.getUserId(authorization);
-    return this.workoutService.getDays(userId, workoutId);
+    return this.workoutService.getDivisions(userId, workoutId);
   }
 
-  @Post(':workoutId/days')
-  async createDay(
+  @Post(':workoutId/divisions')
+  async createDivision(
     @Param('workoutId') workoutId: string,
     @Body() body: { name: string },
     @Headers('authorization') authorization?: string,
   ) {
     if (!body?.name?.trim())
-      throw new BadRequestException('Nome do dia é obrigatório.');
+      throw new BadRequestException('Nome da divisão é obrigatório.');
     const userId = await this.getUserId(authorization);
-    return this.workoutService.createDay(userId, workoutId, body.name);
+    return this.workoutService.createDivision(userId, workoutId, body.name);
   }
 
-  @Delete(':workoutId/days/:dayId')
-  async deleteDay(
+  @Put(':workoutId/divisions/:divisionId')
+  async updateDivision(
     @Param('workoutId') workoutId: string,
-    @Param('dayId') dayId: string,
+    @Param('divisionId') divisionId: string,
+    @Body() body: { name: string },
+    @Headers('authorization') authorization?: string,
+  ) {
+    if (!body?.name?.trim())
+      throw new BadRequestException('Nome da divisão é obrigatório.');
+    const userId = await this.getUserId(authorization);
+    return this.workoutService.updateDivision(
+      userId,
+      workoutId,
+      divisionId,
+      body.name,
+    );
+  }
+
+  @Delete(':workoutId/divisions/:divisionId')
+  async deleteDivision(
+    @Param('workoutId') workoutId: string,
+    @Param('divisionId') divisionId: string,
     @Headers('authorization') authorization?: string,
   ) {
     const userId = await this.getUserId(authorization);
-    return this.workoutService.deleteDay(userId, workoutId, dayId);
+    return this.workoutService.deleteDivision(userId, workoutId, divisionId);
   }
 
   // ─── EXERCÍCIOS ────────────────────────────────────────
 
-  @Get(':workoutId/days/:dayId/exercises')
+  @Get(':workoutId/divisions/:divisionId/exercises')
   async getExercises(
     @Param('workoutId') workoutId: string,
-    @Param('dayId') dayId: string,
+    @Param('divisionId') divisionId: string,
     @Headers('authorization') authorization?: string,
   ) {
     const userId = await this.getUserId(authorization);
-    return this.workoutService.getExercises(userId, workoutId, dayId);
+    return this.workoutService.getExercises(userId, workoutId, divisionId);
   }
 
-  @Post(':workoutId/days/:dayId/exercises')
+  @Post(':workoutId/divisions/:divisionId/exercises')
   async createExercise(
     @Param('workoutId') workoutId: string,
-    @Param('dayId') dayId: string,
+    @Param('divisionId') divisionId: string,
     @Body()
     body: {
       name: string;
@@ -121,13 +158,18 @@ export class WorkoutController {
     if (!body?.name?.trim())
       throw new BadRequestException('Nome do exercício é obrigatório.');
     const userId = await this.getUserId(authorization);
-    return this.workoutService.createExercise(userId, workoutId, dayId, body);
+    return this.workoutService.createExercise(
+      userId,
+      workoutId,
+      divisionId,
+      body,
+    );
   }
 
-  @Put(':workoutId/days/:dayId/exercises/:exerciseId')
+  @Put(':workoutId/divisions/:divisionId/exercises/:exerciseId')
   async updateExercise(
     @Param('workoutId') workoutId: string,
-    @Param('dayId') dayId: string,
+    @Param('divisionId') divisionId: string,
     @Param('exerciseId') exerciseId: string,
     @Body()
     body: {
@@ -146,16 +188,16 @@ export class WorkoutController {
     return this.workoutService.updateExercise(
       userId,
       workoutId,
-      dayId,
+      divisionId,
       exerciseId,
       body,
     );
   }
 
-  @Delete(':workoutId/days/:dayId/exercises/:exerciseId')
+  @Delete(':workoutId/divisions/:divisionId/exercises/:exerciseId')
   async deleteExercise(
     @Param('workoutId') workoutId: string,
-    @Param('dayId') dayId: string,
+    @Param('divisionId') divisionId: string,
     @Param('exerciseId') exerciseId: string,
     @Headers('authorization') authorization?: string,
   ) {
@@ -163,7 +205,7 @@ export class WorkoutController {
     return this.workoutService.deleteExercise(
       userId,
       workoutId,
-      dayId,
+      divisionId,
       exerciseId,
     );
   }

@@ -34,6 +34,26 @@ export class WorkoutService {
     return { workoutId: ref.id };
   }
 
+  async updateWorkout(
+    userId: string,
+    workoutId: string,
+    name: string,
+    goal: string,
+  ) {
+    const ref = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('workouts')
+      .doc(workoutId);
+
+    await ref.set(
+      { name, goal, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+
+    return { success: true };
+  }
+
   async deleteWorkout(userId: string, workoutId: string) {
     const workoutRef = adminDb
       .collection('users')
@@ -41,14 +61,13 @@ export class WorkoutService {
       .collection('workouts')
       .doc(workoutId);
 
-    // Deleta dias e exercícios em cascata
-    const daysSnap = await workoutRef.collection('days').get();
+    const divisionsSnap = await workoutRef.collection('divisions').get();
 
-    for (const dayDoc of daysSnap.docs) {
-      const exercisesSnap = await dayDoc.ref.collection('exercises').get();
+    for (const divisionDoc of divisionsSnap.docs) {
+      const exercisesSnap = await divisionDoc.ref.collection('exercises').get();
       const batch = adminDb.batch();
       exercisesSnap.docs.forEach((ex) => batch.delete(ex.ref));
-      batch.delete(dayDoc.ref);
+      batch.delete(divisionDoc.ref);
       await batch.commit();
     }
 
@@ -56,28 +75,28 @@ export class WorkoutService {
     return { success: true };
   }
 
-  // ─── DIAS ──────────────────────────────────────────────
+  // ─── DIVISÕES ──────────────────────────────────────────
 
-  async getDays(userId: string, workoutId: string) {
+  async getDivisions(userId: string, workoutId: string) {
     const snap = await adminDb
       .collection('users')
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
+      .collection('divisions')
       .orderBy('createdAt', 'asc')
       .get();
 
     return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   }
 
-  async createDay(userId: string, workoutId: string, name: string) {
+  async createDivision(userId: string, workoutId: string, name: string) {
     const ref = adminDb
       .collection('users')
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
+      .collection('divisions')
       .doc();
 
     await ref.set({
@@ -85,22 +104,44 @@ export class WorkoutService {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    return { dayId: ref.id };
+    return { divisionId: ref.id };
   }
 
-  async deleteDay(userId: string, workoutId: string, dayId: string) {
-    const dayRef = adminDb
+  async updateDivision(
+    userId: string,
+    workoutId: string,
+    divisionId: string,
+    name: string,
+  ) {
+    const ref = adminDb
       .collection('users')
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
-      .doc(dayId);
+      .collection('divisions')
+      .doc(divisionId);
 
-    const exercisesSnap = await dayRef.collection('exercises').get();
+    await ref.set(
+      { name, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+
+    return { success: true };
+  }
+
+  async deleteDivision(userId: string, workoutId: string, divisionId: string) {
+    const divisionRef = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('workouts')
+      .doc(workoutId)
+      .collection('divisions')
+      .doc(divisionId);
+
+    const exercisesSnap = await divisionRef.collection('exercises').get();
     const batch = adminDb.batch();
     exercisesSnap.docs.forEach((ex) => batch.delete(ex.ref));
-    batch.delete(dayRef);
+    batch.delete(divisionRef);
     await batch.commit();
 
     return { success: true };
@@ -108,14 +149,14 @@ export class WorkoutService {
 
   // ─── EXERCÍCIOS ────────────────────────────────────────
 
-  async getExercises(userId: string, workoutId: string, dayId: string) {
+  async getExercises(userId: string, workoutId: string, divisionId: string) {
     const snap = await adminDb
       .collection('users')
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
-      .doc(dayId)
+      .collection('divisions')
+      .doc(divisionId)
       .collection('exercises')
       .orderBy('createdAt', 'asc')
       .get();
@@ -126,7 +167,7 @@ export class WorkoutService {
   async createExercise(
     userId: string,
     workoutId: string,
-    dayId: string,
+    divisionId: string,
     data: {
       name: string;
       muscle?: string;
@@ -143,8 +184,8 @@ export class WorkoutService {
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
-      .doc(dayId)
+      .collection('divisions')
+      .doc(divisionId)
       .collection('exercises')
       .doc();
 
@@ -160,7 +201,7 @@ export class WorkoutService {
   async updateExercise(
     userId: string,
     workoutId: string,
-    dayId: string,
+    divisionId: string,
     exerciseId: string,
     data: {
       name?: string;
@@ -178,8 +219,8 @@ export class WorkoutService {
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
-      .doc(dayId)
+      .collection('divisions')
+      .doc(divisionId)
       .collection('exercises')
       .doc(exerciseId);
 
@@ -194,7 +235,7 @@ export class WorkoutService {
   async deleteExercise(
     userId: string,
     workoutId: string,
-    dayId: string,
+    divisionId: string,
     exerciseId: string,
   ) {
     await adminDb
@@ -202,8 +243,8 @@ export class WorkoutService {
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
-      .doc(dayId)
+      .collection('divisions')
+      .doc(divisionId)
       .collection('exercises')
       .doc(exerciseId)
       .delete();
@@ -226,22 +267,22 @@ export class WorkoutService {
     }
 
     const workout = workoutSnap.data() as { name: string; goal: string };
-    const daysSnap = await adminDb
+    const divisionsSnap = await adminDb
       .collection('users')
       .doc(userId)
       .collection('workouts')
       .doc(workoutId)
-      .collection('days')
+      .collection('divisions')
       .orderBy('createdAt', 'asc')
       .get();
 
     let summary = `📋 *${workout.name}*\n🎯 Objetivo: ${workout.goal}\n\n`;
 
-    for (const dayDoc of daysSnap.docs) {
-      const day = dayDoc.data() as { name: string };
-      summary += `📅 *${day.name}*\n`;
+    for (const divisionDoc of divisionsSnap.docs) {
+      const division = divisionDoc.data() as { name: string };
+      summary += `💪 *${division.name}*\n`;
 
-      const exercisesSnap = await dayDoc.ref
+      const exercisesSnap = await divisionDoc.ref
         .collection('exercises')
         .orderBy('createdAt', 'asc')
         .get();

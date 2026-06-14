@@ -6,6 +6,7 @@ import { ArrowRight, Dumbbell, Sparkles } from "lucide-react";
 import { LoginModal } from "@/components/modals/LoginModal";
 import { ForgotPasswordModal } from "@/components/modals/ForgotPasswordModal";
 import { RegisterModal } from "@/components/modals/RegisterModal";
+import Image from "next/image";
 
 export default function Home() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -16,14 +17,20 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-white lg:h-screen lg:overflow-hidden">
       <header className="absolute inset-x-0 top-0 z-10">
         <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
+          <Link href="/" className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
               <Dumbbell className="h-5 w-5" />
             </span>
 
-            <span className="text-lg tracking-tight">
-              GymProgress <span className="text-emerald-400">IA</span>
-            </span>
+            <Image
+              src="/LogoGymProgressIA.png"
+              alt="GymProgress IA"
+              width={160}
+              height={40}
+              unoptimized
+              loading="eager"
+              className="h-9 w-auto object-contain"
+            />
           </Link>
 
           <button

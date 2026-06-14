@@ -284,7 +284,7 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         {
           updatedAt: now,
           ...(isFirstMessage && {
-            title: message.slice(0, 40) + (message.length > 40 ? '...' : ''),
+            title: message.slice(0, 30) + (message.length > 30 ? '...' : ''),
           }),
         },
         { merge: true },
@@ -458,7 +458,7 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         {
           updatedAt: now,
           ...(isFirstMessage && {
-            title: message.slice(0, 40) + (message.length > 40 ? '...' : ''),
+            title: message.slice(0, 30) + (message.length > 30 ? '...' : ''),
           }),
         },
         { merge: true },

@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import Image from "next/image";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -50,6 +51,7 @@ export default function DashboardPage() {
 
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userName, setUserName] = useState("");
 
   const [dailyUsage, setDailyUsage] = useState({
@@ -195,6 +197,8 @@ export default function DashboardPage() {
         setSavedProfile(loadedProfile);
         setShowWelcomeModal(!data.profileCompleted);
       }
+
+      setIsCheckingAuth(false);
     });
 
     return () => unsubscribe();
@@ -404,6 +408,14 @@ export default function DashboardPage() {
       .trim();
   }
 
+  if (isCheckingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-zinc-950">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-zinc-950 text-white">
       {sidebarOpen && (
@@ -422,9 +434,15 @@ export default function DashboardPage() {
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
                 <Dumbbell className="h-4 w-4" />
               </span>
-              <span className="tracking-tight">
-                GymProgress <span className="text-emerald-400">IA</span>
-              </span>
+              <Image
+                src="/LogoGymProgressIA.png"
+                alt="GymProgress IA"
+                width={160}
+                height={40}
+                unoptimized
+                loading="eager"
+                className="h-8 w-auto object-contain"
+              />
             </Link>
 
             <button
@@ -553,8 +571,16 @@ export default function DashboardPage() {
               <PanelLeftOpen className="h-5 w-5" />
             </button>
           )}
-          <span className="ml-3 text-sm font-semibold text-zinc-300">
-            GymProgress <span className="text-emerald-400">IA</span>
+          <span className="ml-3 flex items-center gap-2">
+            <Image
+              src="/LogoGymProgressIA.png"
+              alt="GymProgress IA"
+              width={160}
+              height={40}
+              unoptimized
+              loading="eager"
+              className="h-7 w-auto object-contain"
+            />
           </span>
         </div>
 
@@ -714,6 +740,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+            <p className="mt-2 text-center text-xs text-zinc-600">
+              GymProgress é uma IA e pode cometer erros. Por favor, verifique as
+              respostas.
+            </p>
           </form>
         </div>
       </main>
@@ -747,12 +777,11 @@ export default function DashboardPage() {
           >
             <h2 className="text-lg font-bold text-white">Excluir Chat?</h2>
 
-            <p className="mt-2 text-sm text-zinc-400">
+               <p className="mt-2 text-sm text-zinc-400">
               Isso excluirá{" "}
-              <span className="font-semibold text-white">
+              <span className="block truncate font-semibold text-white">
                 {conversationToDelete.title}
               </span>
-              .
             </p>
 
             <p className="mt-1 text-xs text-zinc-500">
