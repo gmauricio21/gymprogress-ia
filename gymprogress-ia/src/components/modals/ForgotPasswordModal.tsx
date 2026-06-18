@@ -22,6 +22,10 @@ export function ForgotPasswordModal({
     return null;
   }
 
+  /**
+   * Valida o e-mail informado pelo usuário e exibe
+   * uma mensagem simulando o envio do link de recuperação.
+   */
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -42,12 +46,18 @@ export function ForgotPasswordModal({
     setSuccess("Link de recuperação enviado para o e-mail informado.");
   }
 
+  /**
+   * Limpa todos os campos e mensagens do formulário.
+   */
   function resetForm() {
     setEmail("");
     setError("");
     setSuccess("");
   }
 
+  /**
+   * Fecha o modal e limpa o formulário antes de sair.
+   */
   function handleClose() {
     resetForm();
     onClose();

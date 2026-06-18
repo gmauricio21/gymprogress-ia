@@ -83,15 +83,25 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     noLoad: false,
   });
 
+  /**
+   * Exibe uma mensagem temporária de sucesso ou erro na tela.
+   */
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }
 
+  /**
+   * Recupera o token do usuário autenticado para autorizar
+   * as requisições ao backend.
+   */
   async function getToken() {
     return auth.currentUser?.getIdToken();
   }
 
+  /**
+   * Limpa o formulário de exercício e sai do modo de edição.
+   */
   function resetExForm() {
     setExForm({
       name: "",
@@ -108,7 +118,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
   }
 
   // ─── TREINOS ───────────────────────────────────────────
-
+  /**
+   * Busca todos os treinos cadastrados pelo usuário.
+   */
   const fetchWorkouts = useCallback(async () => {
     const token = await getToken();
     const res = await fetch(API, {
@@ -120,11 +132,17 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     return res.json() as Promise<Workout[]>;
   }, []);
 
+  /**
+   * Carrega os treinos e atualiza a lista exibida no modal.
+   */
   const loadWorkouts = useCallback(async () => {
     const data = await fetchWorkouts();
     setWorkouts(data);
   }, [fetchWorkouts]);
 
+  /**
+   * Valida os campos e cria um novo treino.
+   */
   async function handleCreateWorkout() {
     const newErrors: string[] = [];
     if (!workoutName.trim()) newErrors.push("name");
@@ -150,6 +168,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Exclui um treino pelo ID informado.
+   */
   async function handleDeleteWorkout(workoutId: string) {
     const token = await getToken();
     const res = await fetch(`${API}/${workoutId}`, {
@@ -162,6 +183,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Atualiza os dados do treino que está em edição.
+   */
   async function handleUpdateWorkout() {
     const newErrors: string[] = [];
     if (!workoutName.trim()) newErrors.push("name");
@@ -190,6 +214,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Abre um treino e carrega suas divisões.
+   */
   async function handleOpenWorkout(workout: Workout) {
     setSelectedWorkout(workout);
     setView("divisions");
@@ -201,7 +228,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
   }
 
   // ─── DIVISÕES ──────────────────────────────────────────
-
+  /**
+   * Cria uma nova divisão dentro do treino selecionado.
+   */
   async function handleCreateDivision() {
     if (!divisionName.trim()) {
       setDivisionError(true);
@@ -227,6 +256,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Exclui uma divisão do treino selecionado.
+   */
   async function handleDeleteDivision(divisionId: string) {
     if (!selectedWorkout) return;
     const token = await getToken();
@@ -246,6 +278,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Atualiza o nome da divisão que está em edição.
+   */
   async function handleUpdateDivision() {
     if (!divisionName.trim()) {
       setDivisionError(true);
@@ -277,6 +312,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Abre uma divisão e carrega seus exercícios.
+   */
   async function handleOpenDivision(division: Division) {
     setSelectedDivision(division);
     setView("exercises");
@@ -289,7 +327,12 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
   }
 
   // ─── EXERCÍCIOS ────────────────────────────────────────
-
+  /**
+   * Cria ou atualiza um exercício.
+   *
+   * Se houver um exercício em edição, atualiza os dados.
+   * Caso contrário, cadastra um novo exercício na divisão selecionada.
+   */
   async function handleSaveExercise() {
     if (!exForm.name.trim() || !selectedWorkout || !selectedDivision) return;
     const token = await getToken();
@@ -342,6 +385,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Recarrega os exercícios da divisão selecionada.
+   */
   async function reloadExercises(token: string) {
     const res = await fetch(
       `${API}/${selectedWorkout!.id}/divisions/${selectedDivision!.id}/exercises`,
@@ -350,6 +396,9 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     if (res.ok) setExercises(await res.json());
   }
 
+  /**
+   * Exclui um exercício da divisão atual.
+   */
   async function handleDeleteExercise(exerciseId: string) {
     if (!selectedWorkout || !selectedDivision) return;
     const token = await getToken();
@@ -363,6 +412,10 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     }
   }
 
+  /**
+   * Preenche o formulário com os dados do exercício selecionado
+   * para permitir sua edição.
+   */
   function handleEditExercise(ex: Exercise) {
     setEditingExercise(ex);
     setExForm({
@@ -378,6 +431,10 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     });
   }
 
+  /**
+   * Copia os dados de um exercício para o formulário,
+   * permitindo criar outro exercício parecido.
+   */
   function handleCopyExercise(ex: Exercise) {
     setExForm({
       name: ex.name,
@@ -395,11 +452,19 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
   }
 
   // ─── EXCLUSÃO (com confirmação) ────────────────────────
-
+  /**
+   * Define qual item será excluído e abre o modal de confirmação.
+   */
   function requestDelete(target: DeleteTarget) {
     setDeleteTarget(target);
   }
 
+  /**
+   * Confirma a exclusão do item selecionado.
+   *
+   * A função identifica se o alvo é treino, divisão ou exercício
+   * e executa a exclusão correspondente.
+   */
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -428,7 +493,10 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
   }
 
   // ─── RESUMO ────────────────────────────────────────────
-
+  /**
+   * Gera um resumo textual da ficha de treino e copia
+   * para a área de transferência do usuário.
+   */
   async function handleCopySummary() {
     if (!selectedWorkout) return;
     const token = await getToken();

@@ -3,6 +3,12 @@
 import { Dumbbell, X } from "lucide-react";
 import { useState } from "react";
 
+/**
+ * Representa as informações físicas e objetivos do usuário.
+ *
+ * Esses dados são usados para personalizar as recomendações
+ * geradas pela IA.
+ */
 export type ProfileData = {
   age: string;
   gender: string;
@@ -33,18 +39,34 @@ export function ProfileModal({
 
   if (!isOpen) return null;
 
+  // Define se o modal está sendo usado no primeiro acesso ou na edição do perfil.
   const isWelcome = mode === "welcome";
 
+  /**
+   * Remove o erro de validação de um campo específico.
+   *
+   * É chamada quando o usuário altera o valor do campo,
+   * evitando que o erro continue aparecendo após a correção.
+   */
   function clearFieldError(field: string) {
     setErrors((currentErrors) =>
       currentErrors.filter((error) => error !== field),
     );
   }
 
+  /**
+   * Define a cor da borda do campo de acordo com seu estado de validação.
+   */
   function inputBorder(field: string) {
     return errors.includes(field) ? "border-red-500" : "border-white/10";
   }
 
+  /**
+   * Valida os dados obrigatórios do perfil antes de salvar.
+   *
+   * Caso algum campo esteja vazio, adiciona o campo à lista de erros.
+   * Se todos os campos estiverem preenchidos, executa a função de salvamento.
+   */
   async function handleSave() {
     const newErrors: string[] = [];
 
@@ -62,6 +84,12 @@ export function ProfileModal({
     await onSave();
   }
 
+  /**
+   * Atualiza um campo específico do perfil.
+   *
+   * Também remove o erro daquele campo, caso ele tenha sido
+   * marcado anteriormente como obrigatório.
+   */
   function updateField(field: keyof ProfileData, value: string) {
     setProfile((current) => ({
       ...current,

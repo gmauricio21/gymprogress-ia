@@ -31,6 +31,12 @@ export function LoginModal({
     return null;
   }
 
+  /**
+   * Realiza o login do usuário utilizando e-mail e senha.
+   *
+   * Antes de autenticar, valida se os campos foram preenchidos
+   * e se o e-mail possui um formato válido.
+   */
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -65,6 +71,12 @@ export function LoginModal({
     }
   }
 
+  /**
+   * Realiza o login com a conta Google.
+   *
+   * Caso seja o primeiro acesso do usuário, cria um documento
+   * no Firestore com as informações básicas da conta.
+   */
   async function handleGoogleLogin() {
     setError("");
 
@@ -103,6 +115,9 @@ export function LoginModal({
     }
   }
 
+  /**
+   * Limpa os campos do formulário e remove mensagens de erro.
+   */
   function resetForm() {
     setEmail("");
     setPassword("");
@@ -110,6 +125,9 @@ export function LoginModal({
     setLoading(false);
   }
 
+  /**
+   * Fecha o modal após limpar os dados temporários do formulário.
+   */
   function handleClose() {
     resetForm();
     onClose();
@@ -205,6 +223,9 @@ export function LoginModal({
 
               <button
                 type="button"
+                /**
+                 * Alterna a visibilidade da senha entre texto e senha oculta.
+                 */
                 onClick={() => setShowPassword(!showPassword)}
                 className="cursor-pointer text-zinc-500 transition hover:text-zinc-300"
               >

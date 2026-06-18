@@ -14,6 +14,7 @@ type UsageData = {
 };
 
 type UserProfile = {
+  name?: string;
   age?: string;
   gender?: string;
   weight?: string;
@@ -22,17 +23,36 @@ type UserProfile = {
   limitations?: string;
 };
 
+/**
+ * Serviço responsável pela regra de negócio do chat com IA.
+ *
+ * Controla:
+ * - integração com o Gemini;
+ * - limite diário de mensagens;
+ * - histórico de conversas;
+ * - personalização por perfil do usuário;
+ * - respostas comuns e respostas em streaming.
+ */
 @Injectable()
 export class ChatService {
   private genAI: GoogleGenerativeAI;
   private readonly DAILY_LIMIT = 15;
 
+  /**
+   * Inicializa o serviço da IA utilizando a chave configurada
+   * nas variáveis de ambiente.
+   */
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) throw new Error('GEMINI_API_KEY não configurada.');
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
 
+  /**
+   * Gera a chave da data atual no fuso horário de São Paulo.
+   *
+   * Essa chave é usada para controlar o limite diário de mensagens.
+   */
   private getTodayKey() {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Sao_Paulo',
@@ -42,6 +62,9 @@ export class ChatService {
     }).format(new Date());
   }
 
+  /**
+   * Retorna o uso diário de mensagens do usuário.
+   */
   async getDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
     const usageRef = adminDb
@@ -62,6 +85,12 @@ export class ChatService {
     };
   }
 
+  /**
+   * Incrementa o uso diário de mensagens do usuário.
+   *
+   * A operação é feita em transação para evitar inconsistências
+   * caso várias mensagens sejam enviadas ao mesmo tempo.
+   */
   private async incrementDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
     const usageRef = adminDb
@@ -103,13 +132,19 @@ export class ChatService {
     });
   }
 
+  /**
+   * Busca os dados de perfil do usuário para personalizar
+   * as respostas da IA.
+   */
   private async getUserProfile(userId: string): Promise<UserProfile> {
     const userSnap = await adminDb.collection('users').doc(userId).get();
     if (!userSnap.exists) return {};
     return userSnap.data() as UserProfile;
   }
 
-  // Cria uma nova conversa e retorna o ID
+  /**
+   * Cria uma nova conversa no Firestore.
+   */
   async createConversation(userId: string) {
     const convRef = adminDb
       .collection('users')
@@ -126,7 +161,9 @@ export class ChatService {
     return { conversationId: convRef.id };
   }
 
-  // Lista todas as conversas do usuário
+  /**
+   * Lista todas as conversas do usuário, ordenadas pela mais recente.
+   */
   async getConversations(userId: string) {
     const snap = await adminDb
       .collection('users')
@@ -141,7 +178,9 @@ export class ChatService {
     }));
   }
 
-  // Busca as mensagens de uma conversa
+  /**
+   * Busca todas as mensagens de uma conversa específica.
+   */
   async getMessages(userId: string, conversationId: string) {
     const snap = await adminDb
       .collection('users')
@@ -158,6 +197,12 @@ export class ChatService {
     }));
   }
 
+  /**
+   * Envia uma mensagem para a IA e retorna a resposta completa.
+   *
+   * Também salva a mensagem do usuário, a resposta da IA,
+   * atualiza o uso diário e registra a conversa no Firestore.
+   */
   async sendMessage(
     userId: string,
     conversationId: string | null,
@@ -171,9 +216,9 @@ export class ChatService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-
-    // Se já existe uma conversa, busca o histórico
-    // Se não existe, deixa para criar só após a IA responder
+    /**
+     * Recupera o perfil e o histórico para contextualizar a resposta da IA.
+     * */
     const userProfile = await this.getUserProfile(userId);
 
     let convId = conversationId;
@@ -197,11 +242,11 @@ export class ChatService {
             content: string;
           };
           return {
-            role: data.role === 'assistant' ? 'model' : data.role, // ← conversão aqui
+            role: data.role === 'assistant' ? 'model' : data.role,
             parts: [{ text: data.content }],
           };
         })
-      : []; // ← adiciona isso
+      : [];
 
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
@@ -209,6 +254,7 @@ export class ChatService {
 Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
 
 Dados do usuário atual:
+- Nome: ${userProfile.name ?? 'não informado'}
 - Idade: ${userProfile.age ?? 'não informada'}
 - Gênero: ${userProfile.gender ?? 'não informado'}
 - Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
@@ -247,8 +293,9 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       });
 
       const answer = result.response.text();
-
-      // Só cria a conversa agora, após a IA responder com sucesso
+      /*
+       * Cria a conversa somente após uma resposta válida da IA.
+       */
       if (!convId) {
         const created = await this.createConversation(userId);
         convId = created.conversationId;
@@ -267,8 +314,9 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       const assistantMsgRef = messagesRef.doc();
 
       await userMsgRef.set({ role: 'user', content: message, createdAt: now });
-
-      // Pequeno delay garante timestamps diferentes
+      /*
+       * Pequeno atraso para reduzir chance de timestamps iguais entre mensagens.
+       */
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const assistantNow = FieldValue.serverTimestamp();
@@ -314,6 +362,9 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
     }
   }
 
+  /**
+   * Exclui uma conversa e suas mensagens associadas.
+   */
   async deleteConversation(userId: string, conversationId: string) {
     const convRef = adminDb
       .collection('users')
@@ -331,6 +382,12 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
     return { success: true };
   }
 
+  /**
+   * Envia uma mensagem para a IA e retorna a resposta em streaming.
+   *
+   * A resposta é enviada ao frontend em pequenos trechos (chunks),
+   * permitindo exibição progressiva da mensagem na interface.
+   */
   async streamMessage(
     userId: string,
     conversationId: string | null,
@@ -382,6 +439,7 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
 Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
 
 Dados do usuário atual:
+- Nome: ${userProfile.name ?? 'não informado'}
 - Idade: ${userProfile.age ?? 'não informada'}
 - Gênero: ${userProfile.gender ?? 'não informado'}
 - Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
@@ -419,8 +477,10 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         contents: [...history, { role: 'user', parts: [{ text: message }] }],
       });
 
+      // Acumula a resposta completa para salvá-la no histórico ao final do stream.
       let fullAnswer = '';
 
+      // Envia cada trecho gerado pela IA para o frontend via SSE.
       for await (const chunk of streamResult.stream) {
         const text = chunk.text();
         fullAnswer += text;
@@ -464,10 +524,12 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         { merge: true },
       );
 
+      // Informa ao frontend que o stream terminou e envia os dados atualizados.
       res.write(
         `data: ${JSON.stringify({ done: true, usage, conversationId: convId })}\n\n`,
       );
       res.end();
+      // Retorna o erro pelo próprio stream para que o frontend trate a mensagem.
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&

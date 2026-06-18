@@ -13,10 +13,23 @@ import {
 import { WorkoutService } from './workout.service';
 import { adminAuth } from '../firebase-admin';
 
+/**
+ * Controlador responsável pelo gerenciamento das fichas de treino.
+ *
+ * Disponibiliza endpoints para:
+ * - criar, listar, editar e excluir treinos;
+ * - criar, listar, editar e excluir divisões;
+ * - criar, listar, editar e excluir exercícios;
+ * - gerar o resumo da ficha de treino.
+ */
 @Controller('workout')
 export class WorkoutController {
   constructor(private readonly workoutService: WorkoutService) {}
 
+  /**
+   * Obtém o ID do usuário autenticado a partir do token JWT
+   * enviado no cabeçalho Authorization.
+   */
   private async getUserId(authorization?: string) {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Usuário não autenticado.');
@@ -27,13 +40,21 @@ export class WorkoutController {
   }
 
   // ─── TREINOS ───────────────────────────────────────────
-
+  /**
+   * Lista todas as fichas de treino do usuário autenticado.
+   */
   @Get()
   async getWorkouts(@Headers('authorization') authorization?: string) {
     const userId = await this.getUserId(authorization);
     return this.workoutService.getWorkouts(userId);
   }
 
+  /**
+   * Cria uma nova ficha de treino.
+   *
+   * Valida se o nome e o objetivo foram informados antes
+   * de enviar os dados para o service.
+   */
   @Post()
   async createWorkout(
     @Body() body: { name: string; goal: string },
@@ -47,6 +68,9 @@ export class WorkoutController {
     return this.workoutService.createWorkout(userId, body.name, body.goal);
   }
 
+  /**
+   * Atualiza o nome e o objetivo de uma ficha de treino existente.
+   */
   @Put(':workoutId')
   async updateWorkout(
     @Param('workoutId') workoutId: string,
@@ -66,6 +90,9 @@ export class WorkoutController {
     );
   }
 
+  /**
+   * Exclui uma ficha de treino pelo seu identificador.
+   */
   @Delete(':workoutId')
   async deleteWorkout(
     @Param('workoutId') workoutId: string,
@@ -76,7 +103,9 @@ export class WorkoutController {
   }
 
   // ─── DIVISÕES ──────────────────────────────────────────
-
+  /**
+   * Lista as divisões de uma ficha de treino.
+   */
   @Get(':workoutId/divisions')
   async getDivisions(
     @Param('workoutId') workoutId: string,
@@ -86,6 +115,9 @@ export class WorkoutController {
     return this.workoutService.getDivisions(userId, workoutId);
   }
 
+  /**
+   * Cria uma nova divisão dentro de uma ficha de treino.
+   */
   @Post(':workoutId/divisions')
   async createDivision(
     @Param('workoutId') workoutId: string,
@@ -98,6 +130,9 @@ export class WorkoutController {
     return this.workoutService.createDivision(userId, workoutId, body.name);
   }
 
+  /**
+   * Atualiza o nome de uma divisão existente.
+   */
   @Put(':workoutId/divisions/:divisionId')
   async updateDivision(
     @Param('workoutId') workoutId: string,
@@ -116,6 +151,9 @@ export class WorkoutController {
     );
   }
 
+  /**
+   * Exclui uma divisão de uma ficha de treino.
+   */
   @Delete(':workoutId/divisions/:divisionId')
   async deleteDivision(
     @Param('workoutId') workoutId: string,
@@ -127,7 +165,9 @@ export class WorkoutController {
   }
 
   // ─── EXERCÍCIOS ────────────────────────────────────────
-
+  /**
+   * Lista os exercícios de uma divisão específica.
+   */
   @Get(':workoutId/divisions/:divisionId/exercises')
   async getExercises(
     @Param('workoutId') workoutId: string,
@@ -138,6 +178,11 @@ export class WorkoutController {
     return this.workoutService.getExercises(userId, workoutId, divisionId);
   }
 
+  /**
+   * Cria um novo exercício dentro de uma divisão.
+   *
+   * O nome do exercício é obrigatório; os demais campos são opcionais.
+   */
   @Post(':workoutId/divisions/:divisionId/exercises')
   async createExercise(
     @Param('workoutId') workoutId: string,
@@ -166,6 +211,9 @@ export class WorkoutController {
     );
   }
 
+  /**
+   * Atualiza os dados de um exercício existente.
+   */
   @Put(':workoutId/divisions/:divisionId/exercises/:exerciseId')
   async updateExercise(
     @Param('workoutId') workoutId: string,
@@ -194,6 +242,9 @@ export class WorkoutController {
     );
   }
 
+  /**
+   * Exclui um exercício de uma divisão.
+   */
   @Delete(':workoutId/divisions/:divisionId/exercises/:exerciseId')
   async deleteExercise(
     @Param('workoutId') workoutId: string,
@@ -211,7 +262,12 @@ export class WorkoutController {
   }
 
   // ─── RESUMO ────────────────────────────────────────────
-
+  /**
+   * Retorna um resumo textual da ficha de treino.
+   *
+   * Esse resumo pode ser utilizado para visualização rápida
+   * ou cópia da ficha pelo usuário.
+   */
   @Get(':workoutId/summary')
   async getWorkoutSummary(
     @Param('workoutId') workoutId: string,

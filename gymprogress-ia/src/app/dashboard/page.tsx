@@ -1,7 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import { normalizeMarkdown } from "@/utils/normalizeMarkdown";
+import { useChatComposer } from "@/hooks/useChatComposer";
+import { useResponsiveSidebar } from "@/hooks/useResponsiveSidebar";
+import { useScrollToBottom } from "@/hooks/useScrollToBottom";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { useDashboardConversations } from "@/hooks/useDashboardConversations";
+import { useDashboardChat } from "@/hooks/useDashboardChat";
+import { useDashboardAuth } from "@/hooks/useDashboardAuth";
 import { ProfileModal } from "@/components/modals/ProfileModal";
 import { WorkoutModal } from "@/components/modals/WorkoutModal";
 import {
@@ -16,16 +26,6 @@ import {
   User,
   Trash2,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import Image from "next/image";
-import { normalizeMarkdown } from "@/utils/normalizeMarkdown";
-import { useChatComposer } from "@/hooks/useChatComposer";
-import { useResponsiveSidebar } from "@/hooks/useResponsiveSidebar";
-import { useScrollToBottom } from "@/hooks/useScrollToBottom";
-import { useDashboardProfile } from "@/hooks/useDashboardProfile";
-import { useDashboardConversations } from "@/hooks/useDashboardConversations";
-import { useDashboardChat } from "@/hooks/useDashboardChat";
-import { useDashboardAuth } from "@/hooks/useDashboardAuth";
 
 export default function DashboardPage() {
   const { sidebarOpen, setSidebarOpen } = useResponsiveSidebar();

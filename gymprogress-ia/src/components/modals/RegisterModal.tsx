@@ -38,6 +38,11 @@ export function RegisterModal({
     return null;
   }
 
+  /**
+   * Limpa todos os campos, mensagens e estados temporários do formulário.
+   *
+   * Também oculta novamente os campos de senha e remove o estado de carregamento.
+   */
   function resetForm() {
     setName("");
     setEmail("");
@@ -50,11 +55,20 @@ export function RegisterModal({
     setLoading(false);
   }
 
+  /**
+   * Fecha o modal após limpar os dados preenchidos no formulário.
+   */
   function handleClose() {
     resetForm();
     onClose();
   }
 
+  /**
+   * Valida os dados informados e cria uma nova conta com e-mail e senha.
+   *
+   * Após criar o usuário no Firebase Authentication, atualiza o nome do perfil
+   * e salva os dados iniciais do usuário no Firestore.
+   */
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -152,6 +166,12 @@ export function RegisterModal({
     }
   }
 
+  /**
+   * Realiza o cadastro/login com uma conta Google.
+   *
+   * Os dados básicos do usuário são salvos no Firestore
+   * e, caso o documento já exista, as informações são mescladas.
+   */
   async function handleGoogleLogin() {
     setError("");
 
@@ -281,6 +301,7 @@ export function RegisterModal({
 
               <button
                 type="button"
+                // Alterna a visualização da senha principal.
                 onClick={() => setShowPassword(!showPassword)}
                 className="cursor-pointer text-zinc-500 transition hover:text-zinc-300"
               >
@@ -308,6 +329,7 @@ export function RegisterModal({
 
               <button
                 type="button"
+                // Alterna a visualização da confirmação de senha.
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="cursor-pointer text-zinc-500 transition hover:text-zinc-300"
               >
