@@ -1,11 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { ProfileData, ProfileModal } from "@/components/modals/ProfileModal";
+import { useState } from "react";
+import { ProfileModal } from "@/components/modals/ProfileModal";
 import { WorkoutModal } from "@/components/modals/WorkoutModal";
 import {
   ClipboardList,
@@ -21,392 +18,78 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import Image from "next/image";
-
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type Conversation = {
-  id: string;
-  title: string;
-  updatedAt: { seconds: number } | null;
-};
+import { normalizeMarkdown } from "@/utils/normalizeMarkdown";
+import { useChatComposer } from "@/hooks/useChatComposer";
+import { useResponsiveSidebar } from "@/hooks/useResponsiveSidebar";
+import { useScrollToBottom } from "@/hooks/useScrollToBottom";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { useDashboardConversations } from "@/hooks/useDashboardConversations";
+import { useDashboardChat } from "@/hooks/useDashboardChat";
+import { useDashboardAuth } from "@/hooks/useDashboardAuth";
 
 export default function DashboardPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [message, setMessage] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [isComposerExpanded, setIsComposerExpanded] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [conversationToDelete, setConversationToDelete] =
-    useState<Conversation | null>(null);
-  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
-
-  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const { sidebarOpen, setSidebarOpen } = useResponsiveSidebar();
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
 
-  const [userId, setUserId] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userName, setUserName] = useState("");
+  const {
+    message,
+    textareaRef,
+    isComposerExpanded,
+    handleMessageChange,
+    resetComposer,
+  } = useChatComposer();
 
-  const [dailyUsage, setDailyUsage] = useState({
-    used: 0,
-    limit: 15,
-    remaining: 15,
+  const profileHook = useDashboardProfile();
+
+  const {
+    profile,
+    setProfile,
+    showWelcomeModal,
+    setShowWelcomeModal,
+    showProfileModal,
+    setShowProfileModal,
+    loadProfile,
+    handleSaveProfile,
+    handleCloseProfileModal,
+  } = profileHook;
+
+  const {
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
+    conversationToDelete,
+    setConversationToDelete,
+    isDeletingConversation,
+    loadConversations,
+    handleSelectConversation,
+    handleNewChat,
+    handleDeleteConversation,
+  } = useDashboardConversations();
+
+  const {
+    userId,
+    userEmail,
+    userName,
+    isCheckingAuth,
+    dailyUsage,
+    setDailyUsage,
+    handleLogout,
+  } = useDashboardAuth({
+    loadProfile,
+    loadConversations,
   });
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<
-    string | null
-  >(null);
-
-  const [profile, setProfile] = useState<ProfileData>({
-    age: "",
-    gender: "",
-    weight: "",
-    height: "",
-    goal: "",
-    limitations: "",
-  });
-
-  const [savedProfile, setSavedProfile] = useState<ProfileData>({
-    age: "",
-    gender: "",
-    weight: "",
-    height: "",
-    goal: "",
-    limitations: "",
-  });
-
-  function handleMessageChange(value: string) {
-    setMessage(value);
-
-    requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-
-      const maxHeight = 224;
-      textarea.style.height = "auto";
-      const scrollHeight = textarea.scrollHeight;
-      const nextHeight = Math.min(scrollHeight, maxHeight);
-      textarea.style.height = `${nextHeight}px`;
-      textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
-
-      const isSmallScreen = window.innerWidth < 640;
-      setIsComposerExpanded(
-        isSmallScreen || value.length > 55 || value.includes("\n"),
-      );
-    });
-  }
-
-  async function loadConversations(token: string, activeId?: string) {
-    const res = await fetch("http://localhost:3001/chat/conversations", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setConversations(data);
-      if (activeId) {
-        setActiveConversationId(activeId);
-      }
-    }
-  }
-
-  async function handleSelectConversation(conversationId: string) {
-    setActiveConversationId(conversationId);
-    setChatMessages([]);
-
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) return;
-
-    const res = await fetch(
-      `http://localhost:3001/chat/conversations/${conversationId}/messages`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-
-    if (res.ok) {
-      const messages = await res.json();
-      setChatMessages(
-        messages.map((m: { role: string; content: string }) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-      );
-    }
-  }
-
-  function handleNewChat() {
-    setActiveConversationId(null);
-    setChatMessages([]);
-  }
-
-  function scrollToBottom() {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        window.location.href = "/";
-        return;
-      }
-
-      setUserId(user.uid);
-      setUserEmail(user.email ?? "");
-
-      const token = await user.getIdToken();
-
-      const usageResponse = await fetch("http://localhost:3001/chat/usage", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (usageResponse.ok) {
-        const usageData = await usageResponse.json();
-        setDailyUsage(usageData);
-      }
-
-      await loadConversations(token);
-
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-
-        setUserName(data.name ?? user.displayName ?? "");
-
-        const loadedProfile: ProfileData = {
-          age: data.age ?? "",
-          gender: data.gender ?? "",
-          weight: data.weight ?? "",
-          height: data.height ?? "",
-          goal: data.goal ?? "",
-          limitations: data.limitations ?? "",
-        };
-
-        setProfile(loadedProfile);
-        setSavedProfile(loadedProfile);
-        setShowWelcomeModal(!data.profileCompleted);
-      }
-
-      setIsCheckingAuth(false);
+  const { chatMessages, setChatMessages, handleSubmitMessage } =
+    useDashboardChat({
+      message,
+      activeConversationId,
+      setActiveConversationId,
+      resetComposer,
+      loadConversations,
+      setDailyUsage,
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 1023px)");
-
-    function handleResize() {
-      setSidebarOpen(!mediaQuery.matches);
-    }
-
-    handleResize();
-    mediaQuery.addEventListener("change", handleResize);
-    return () => mediaQuery.removeEventListener("change", handleResize);
-  }, []);
-
-  async function handleSaveProfile() {
-    if (!userId) return;
-
-    await setDoc(
-      doc(db, "users", userId),
-      {
-        ...profile,
-        profileCompleted: true,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    setSavedProfile(profile);
-    setShowWelcomeModal(false);
-    setShowProfileModal(false);
-  }
-
-  function handleCloseProfileModal() {
-    setProfile(savedProfile);
-    setShowProfileModal(false);
-  }
-
-  async function handleLogout() {
-    await signOut(auth);
-    window.location.href = "/";
-  }
-
-  async function handleSubmitMessage(e: React.FormEvent) {
-    e.preventDefault();
-
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage || isSendingMessage) return;
-
-    setChatMessages((current) => [
-      ...current,
-      { role: "user", content: trimmedMessage },
-    ]);
-
-    setMessage("");
-    setIsComposerExpanded(false);
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "24px";
-      textareaRef.current.style.overflowY = "hidden";
-    }
-
-    try {
-      setIsSendingMessage(true);
-
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error("Usuário não autenticado.");
-
-      // Adiciona mensagem vazia da IA que vai ser preenchida pelo stream
-      setChatMessages((current) => [
-        ...current,
-        { role: "assistant", content: "" },
-      ]);
-
-      const response = await fetch("http://localhost:3001/chat/stream", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: trimmedMessage,
-          conversationId: activeConversationId,
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        const data = await response.json();
-        setChatMessages((current) => {
-          const updated = [...current];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: data.message ?? "Erro ao consultar a IA.",
-          };
-          return updated;
-        });
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-
-          const json = line.replace("data: ", "").trim();
-          if (!json) continue;
-
-          try {
-            const parsed = JSON.parse(json);
-
-            if (parsed.error) {
-              setChatMessages((current) => {
-                const updated = [...current];
-                updated[updated.length - 1] = {
-                  role: "assistant",
-                  content: parsed.error,
-                };
-                return updated;
-              });
-              return;
-            }
-
-            if (parsed.chunk) {
-              setChatMessages((current) => {
-                const updated = [...current];
-                updated[updated.length - 1] = {
-                  role: "assistant",
-                  content: updated[updated.length - 1].content + parsed.chunk,
-                };
-                return updated;
-              });
-            }
-
-            if (parsed.done) {
-              if (parsed.conversationId) {
-                setActiveConversationId(parsed.conversationId);
-              }
-              if (parsed.usage) setDailyUsage(parsed.usage);
-              await loadConversations(token, parsed.conversationId);
-            }
-          } catch {
-            // ignora linhas malformadas
-          }
-        }
-      }
-    } catch {
-      setChatMessages((current) => {
-        const updated = [...current];
-        updated[updated.length - 1] = {
-          role: "assistant",
-          content:
-            "Não foi possível conectar com a IA no momento. Tente novamente em instantes.",
-        };
-        return updated;
-      });
-    } finally {
-      setIsSendingMessage(false);
-    }
-  }
-
-  async function handleDeleteConversation() {
-    if (!conversationToDelete) return;
-    setIsDeletingConversation(true);
-
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) return;
-
-      const res = await fetch(
-        `http://localhost:3001/chat/conversations/${conversationToDelete.id}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      if (res.ok) {
-        if (activeConversationId === conversationToDelete.id) {
-          setActiveConversationId(null);
-          setChatMessages([]);
-        }
-        await loadConversations(token);
-        setConversationToDelete(null);
-      }
-    } finally {
-      setIsDeletingConversation(false);
-    }
-  }
-
-  function normalizeMarkdown(text?: string) {
-    return (text ?? "")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/^(\d+)\.\s*\n\s*/gm, "$1. ")
-      .replace(/\n\s*\n(?=\s*[-*•])/g, "\n")
-      .trim();
-  }
+  const messagesEndRef = useScrollToBottom(chatMessages);
 
   if (isCheckingAuth) {
     return (
@@ -458,7 +141,7 @@ export default function DashboardPage() {
           <div className="p-3">
             <button
               type="button"
-              onClick={handleNewChat}
+              onClick={() => handleNewChat(setChatMessages)}
               className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600"
             >
               <Plus className="h-4 w-4" />
@@ -485,7 +168,9 @@ export default function DashboardPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => handleSelectConversation(conv.id)}
+                    onClick={() =>
+                      handleSelectConversation(conv.id, setChatMessages)
+                    }
                     className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm transition ${
                       activeConversationId === conv.id
                         ? "text-white"
@@ -753,7 +438,7 @@ export default function DashboardPage() {
         mode="profile"
         profile={profile}
         setProfile={setProfile}
-        onSave={handleSaveProfile}
+        onSave={() => handleSaveProfile(userId)}
         onClose={handleCloseProfileModal}
       />
       <ProfileModal
@@ -761,7 +446,7 @@ export default function DashboardPage() {
         mode="welcome"
         profile={profile}
         setProfile={setProfile}
-        onSave={handleSaveProfile}
+        onSave={() => handleSaveProfile(userId)}
         onClose={() => setShowWelcomeModal(false)}
       />
       <WorkoutModal
@@ -777,7 +462,7 @@ export default function DashboardPage() {
           >
             <h2 className="text-lg font-bold text-white">Excluir Chat?</h2>
 
-               <p className="mt-2 text-sm text-zinc-400">
+            <p className="mt-2 text-sm text-zinc-400">
               Isso excluirá{" "}
               <span className="block truncate font-semibold text-white">
                 {conversationToDelete.title}
@@ -800,7 +485,7 @@ export default function DashboardPage() {
 
               <button
                 type="button"
-                onClick={handleDeleteConversation}
+                onClick={() => handleDeleteConversation(setChatMessages)}
                 disabled={isDeletingConversation}
                 className="flex-1 cursor-pointer rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
               >
