@@ -5,83 +5,163 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ProfileData } from "@/components/modals/ProfileModal";
 
-/**
- * Controla os dados de perfil do usuário dentro do dashboard.
- *
- * Responsável por:
- * - armazenar os dados do perfil;
- * - controlar os modais de perfil e boas-vindas;
- * - salvar as informações no Firebase;
- * - restaurar dados caso o usuário feche o modal sem salvar.
- */
 export function useDashboardProfile() {
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const [profile, setProfile] = useState<ProfileData>({
-    age: "",
+  const emptyProfile: ProfileData = {
+    birthDate: "",
     gender: "",
     weight: "",
     height: "",
+    bmi: "",
+    bmiClassification: "",
+    experienceLevel: "",
     goal: "",
+    customGoal: "",
+    hasLimitations: "",
     limitations: "",
-  });
+  };
 
-  const [savedProfile, setSavedProfile] = useState<ProfileData>({
-    age: "",
-    gender: "",
-    weight: "",
-    height: "",
-    goal: "",
-    limitations: "",
-  });
+  const [profile, setProfile] = useState<ProfileData>(emptyProfile);
+  const [savedProfile, setSavedProfile] = useState<ProfileData>(emptyProfile);
 
-  /**
-   * Carrega o perfil vindo do Firebase.
-   *
-   * Também salva uma cópia em savedProfile para permitir
-   * descartar alterações caso o usuário feche o modal.
-   */
+  function calculateBmi(weight: string, height: string) {
+    const weightNumber = Number(weight.replace(",", "."));
+    const heightNumber = Number(height.replace(",", "."));
+
+    if (!weightNumber || !heightNumber) {
+      return {
+        bmi: "",
+        bmiClassification: "",
+      };
+    }
+
+    const heightInMeters = heightNumber > 3 ? heightNumber / 100 : heightNumber;
+    const bmiValue = weightNumber / (heightInMeters * heightInMeters);
+
+    let bmiClassification = "";
+
+    if (bmiValue < 18.5) {
+      bmiClassification = "Magreza";
+    } else if (bmiValue < 25) {
+      bmiClassification = "Normal";
+    } else if (bmiValue < 30) {
+      bmiClassification = "Sobrepeso";
+    } else if (bmiValue < 35) {
+      bmiClassification = "Obesidade grau I";
+    } else if (bmiValue < 40) {
+      bmiClassification = "Obesidade grau II";
+    } else {
+      bmiClassification = "Obesidade grau III";
+    }
+
+    return {
+      bmi: Number(bmiValue.toFixed(1)),
+      bmiClassification,
+    };
+  }
+
   const loadProfile = useCallback(function loadProfile(
     data: ProfileData,
     profileCompleted?: boolean,
+    privacyAccepted?: boolean,
   ) {
-    setProfile(data);
-    setSavedProfile(data);
+    const loadedProfile: ProfileData = {
+      birthDate: data.birthDate ?? "",
+      gender: data.gender ?? "",
+      weight: data.weight ? String(data.weight) : "",
+      height: data.height ? String(data.height) : "",
+      bmi: data.bmi ? String(data.bmi) : "",
+      bmiClassification: data.bmiClassification ?? "",
+      experienceLevel: data.experienceLevel ?? "",
+      goal: data.goal ?? "",
+      customGoal: data.customGoal ?? "",
+      hasLimitations: data.hasLimitations ?? "",
+      limitations: data.limitations ?? "",
+    };
+
+    setProfile(loadedProfile);
+    setSavedProfile(loadedProfile);
+
+    if (!privacyAccepted) {
+      setShowPrivacyModal(true);
+      setShowWelcomeModal(false);
+      return;
+    }
+
+    setShowPrivacyModal(false);
     setShowWelcomeModal(!profileCompleted);
   }, []);
 
-  /**
-   * Salva o perfil atual do usuário no Firebase.
-   *
-   * Após salvar, atualiza a cópia salva e fecha os modais.
-   */
+  const handleAcceptPrivacy = useCallback(async function handleAcceptPrivacy(
+    userId: string,
+  ) {
+    if (!userId) return;
+
+    await setDoc(
+      doc(db, "users", userId),
+      {
+        privacyAccepted: true,
+        privacyAcceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    setShowPrivacyModal(false);
+    setShowWelcomeModal(true);
+  }, []);
+
   const handleSaveProfile = useCallback(
     async function handleSaveProfile(userId: string) {
       if (!userId) return;
 
-      await setDoc(
-        doc(db, "users", userId),
-        {
-          ...profile,
-          profileCompleted: true,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      const calculatedBmi = calculateBmi(profile.weight, profile.height);
 
-      setSavedProfile(profile);
+      const profileToSave = {
+        birthDate: profile.birthDate,
+        gender: profile.gender,
+        weight: Number(profile.weight),
+        height: Number(profile.height),
+        bmi: calculatedBmi.bmi,
+        bmiClassification: calculatedBmi.bmiClassification,
+        experienceLevel: profile.experienceLevel,
+        goal: profile.goal,
+        customGoal: profile.goal === "outros" ? profile.customGoal : "",
+        hasLimitations: profile.hasLimitations === "sim",
+        limitations:
+          profile.hasLimitations === "sim" ? profile.limitations : "",
+        profileVersion: 2,
+        profileCompleted: true,
+        updatedAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, "users", userId), profileToSave, { merge: true });
+
+      const normalizedProfile: ProfileData = {
+        birthDate: profileToSave.birthDate,
+        gender: profileToSave.gender,
+        weight: String(profileToSave.weight),
+        height: String(profileToSave.height),
+        bmi: String(profileToSave.bmi),
+        bmiClassification: profileToSave.bmiClassification,
+        experienceLevel: profileToSave.experienceLevel,
+        goal: profileToSave.goal,
+        customGoal: profileToSave.customGoal,
+        hasLimitations: profileToSave.hasLimitations ? "sim" : "nao",
+        limitations: profileToSave.limitations,
+      };
+
+      setProfile(normalizedProfile);
+      setSavedProfile(normalizedProfile);
       setShowWelcomeModal(false);
       setShowProfileModal(false);
     },
     [profile],
   );
 
-  /**
-   * Fecha o modal de perfil e restaura os dados salvos anteriormente.
-   *
-   * Isso evita manter alterações que o usuário não salvou.
-   */
   const handleCloseProfileModal = useCallback(
     function handleCloseProfileModal() {
       setProfile(savedProfile);
@@ -93,11 +173,14 @@ export function useDashboardProfile() {
   return {
     profile,
     setProfile,
+    showPrivacyModal,
+    setShowPrivacyModal,
     showWelcomeModal,
     setShowWelcomeModal,
     showProfileModal,
     setShowProfileModal,
     loadProfile,
+    handleAcceptPrivacy,
     handleSaveProfile,
     handleCloseProfileModal,
   };

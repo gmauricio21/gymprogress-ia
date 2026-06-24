@@ -15,44 +15,179 @@ type UsageData = {
 
 type UserProfile = {
   name?: string;
-  age?: string;
+  birthDate?: string;
   gender?: string;
-  weight?: string;
-  height?: string;
+  weight?: number;
+  height?: number;
+  bmi?: number;
+  bmiClassification?: string;
+  experienceLevel?: string;
   goal?: string;
+  customGoal?: string;
+  hasLimitations?: boolean;
   limitations?: string;
 };
 
-/**
- * Serviço responsável pela regra de negócio do chat com IA.
- *
- * Controla:
- * - integração com o Gemini;
- * - limite diário de mensagens;
- * - histórico de conversas;
- * - personalização por perfil do usuário;
- * - respostas comuns e respostas em streaming.
- */
 @Injectable()
 export class ChatService {
   private genAI: GoogleGenerativeAI;
   private readonly DAILY_LIMIT = 15;
 
-  /**
-   * Inicializa o serviço da IA utilizando a chave configurada
-   * nas variáveis de ambiente.
-   */
+  private readonly SAFE_RESPONSE =
+    '⚠️ Esta plataforma possui caráter exclusivamente informativo e não realiza diagnósticos, tratamentos ou prescrições. Em situações envolvendo dor, lesão, gravidez, medicamentos, menores de idade, sintomas físicos ou emergências, procure orientação de um médico, fisioterapeuta ou profissional qualificado.';
+
+  private readonly RISK_TERMS = [
+    'dor no peito',
+    'dor no coração',
+    'dor no peito durante o treino',
+    'falta de ar',
+    'dificuldade para respirar',
+    'desmaio',
+    'quase desmaiei',
+    'tontura',
+    'mal estar',
+    'fraqueza',
+    'suor frio',
+    'palpitação',
+    'palpitacao',
+    'coração acelerado',
+    'coracao acelerado',
+    'coração disparado',
+    'coracao disparado',
+    'pressão alta',
+    'pressao alta',
+    'pressão baixa',
+    'pressao baixa',
+    'hipertensão',
+    'hipertensao',
+    'hipotensão',
+    'hipotensao',
+    'queda de pressão',
+    'queda de pressao',
+    'pressão desregulada',
+    'pressao desregulada',
+    'arritmia',
+    'aritimia',
+    'arritmia cardíaca',
+    'arritmia cardiaca',
+    'risco cardiológico',
+    'risco cardiologico',
+    'problema cardíaco',
+    'problema cardiaco',
+    'doença cardíaca',
+    'doenca cardiaca',
+    'insuficiência cardíaca',
+    'insuficiencia cardiaca',
+    'infarto',
+    'ataque cardíaco',
+    'ataque cardiaco',
+    'angina',
+    'taquicardia',
+    'bradicardia',
+    'lesão',
+    'lesao',
+    'machuquei',
+    'rompi',
+    'ruptura',
+    'fratura',
+    'entorse',
+    'luxação',
+    'luxacao',
+    'distensão',
+    'distensao',
+    'tendinite',
+    'dor no joelho',
+    'dor no ombro',
+    'dor na coluna',
+    'dor lombar',
+    'dor cervical',
+    'dor nas costas',
+    'hérnia',
+    'hernia',
+    'hérnia de disco',
+    'hernia de disco',
+    'escoliose',
+    'lordose',
+    'cifose',
+    'problema na coluna',
+    'doença',
+    'doenca',
+    'doenças',
+    'doencas',
+    'diabetes',
+    'pré-diabetes',
+    'pre diabetes',
+    'asma',
+    'bronquite',
+    'epilepsia',
+    'câncer',
+    'cancer',
+    'covid',
+    'covid-19',
+    'gripe forte',
+    'pneumonia',
+    'medicamento',
+    'medicamentos',
+    'remédio',
+    'remedio',
+    'remédios',
+    'remedios',
+    'antidepressivo',
+    'ansiolítico',
+    'ansiolitico',
+    'anti-inflamatório',
+    'anti inflamatorio',
+    'corticoide',
+    'insulina',
+    'grávida',
+    'gravida',
+    'gravidez',
+    '13 anos',
+    '14 anos',
+    '15 anos',
+    '16 anos',
+    'perder 10 quilos rapidamente',
+    'perder peso muito rápido',
+    'perder peso muito rapido',
+    'emagrecer rápido',
+    'emagrecer rapido',
+    'emagrecimento extremo',
+  ];
+
+  private readonly RISK_KEYWORDS = [
+    'dor',
+    'lesão',
+    'lesao',
+    'doença',
+    'doenca',
+    'sintoma',
+    'sintomas',
+    'pressão',
+    'pressao',
+    'hipertensão',
+    'hipertensao',
+    'hipotensão',
+    'hipotensao',
+    'cardíaco',
+    'cardiaco',
+    'coração',
+    'coracao',
+    'arritmia',
+    'infarto',
+    'medicamento',
+    'remédio',
+    'remedio',
+    'gravidez',
+    'grávida',
+    'gravida',
+  ];
+
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) throw new Error('GEMINI_API_KEY não configurada.');
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
 
-  /**
-   * Gera a chave da data atual no fuso horário de São Paulo.
-   *
-   * Essa chave é usada para controlar o limite diário de mensagens.
-   */
   private getTodayKey() {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Sao_Paulo',
@@ -62,9 +197,103 @@ export class ChatService {
     }).format(new Date());
   }
 
-  /**
-   * Retorna o uso diário de mensagens do usuário.
-   */
+  private calculateAge(birthDate?: string): string {
+    if (!birthDate) return 'não informada';
+
+    const birth = new Date(birthDate);
+    const today = new Date();
+
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birth.getDate())
+    ) {
+      age--;
+    }
+
+    return age >= 0 ? `${age} anos` : 'não informada';
+  }
+
+  private formatGender(gender?: string): string {
+    const values: Record<string, string> = {
+      masculino: 'Masculino',
+      feminino: 'Feminino',
+      nao_informar: 'Outros / Prefiro não dizer',
+    };
+
+    return gender ? (values[gender] ?? gender) : 'não informado';
+  }
+
+  private formatGoal(profile: UserProfile): string {
+    const values: Record<string, string> = {
+      perder_peso: 'Perder peso',
+      aumentar_musculos: 'Aumentar músculos',
+      definir_musculos: 'Definir músculos',
+      outros: profile.customGoal || 'Outro objetivo não especificado',
+    };
+
+    return profile.goal
+      ? (values[profile.goal] ?? profile.goal)
+      : 'não informado';
+  }
+
+  private formatExperienceLevel(level?: string): string {
+    const values: Record<string, string> = {
+      iniciante: 'Iniciante',
+      intermediario: 'Intermediário',
+      avancado: 'Avançado',
+    };
+
+    return level ? (values[level] ?? level) : 'não informado';
+  }
+
+  private buildSystemInstruction(userProfile: UserProfile): string {
+    const hasLimitations = userProfile.hasLimitations === true;
+
+    return `
+Você é o GymProgress IA, um assistente informativo voltado exclusivamente para academia, musculação, treinos, exercícios físicos e organização de fichas de treino.
+
+Dados do usuário atual:
+- Nome: ${userProfile.name ?? 'não informado'}
+- Data de nascimento: ${userProfile.birthDate ?? 'não informada'}
+- Idade calculada: ${this.calculateAge(userProfile.birthDate)}
+- Gênero: ${this.formatGender(userProfile.gender)}
+- Peso: ${userProfile.weight ? `${userProfile.weight} kg` : 'não informado'}
+- Altura: ${userProfile.height ? `${userProfile.height} cm` : 'não informada'}
+- IMC: ${userProfile.bmi ? `${userProfile.bmi} kg/m²` : 'não informado'}
+- Classificação do IMC: ${userProfile.bmiClassification ?? 'não informada'}
+- Nível de experiência: ${this.formatExperienceLevel(userProfile.experienceLevel)}
+- Objetivo: ${this.formatGoal(userProfile)}
+- Possui restrições/limitações: ${hasLimitations ? 'Sim' : 'Não'}
+- Restrições/Limitações: ${
+      hasLimitations
+        ? userProfile.limitations || 'não especificadas'
+        : 'nenhuma informada'
+    }
+
+Regras obrigatórias:
+- Responda apenas sobre academia, treinos, musculação, exercícios físicos e organização de fichas.
+- Não realize diagnósticos médicos.
+- Não prescreva medicamentos.
+- Não indique tratamentos para doenças, dores ou lesões.
+- Não substitua médicos, fisioterapeutas, nutricionistas ou profissionais de Educação Física.
+- Não interprete sintomas físicos como dor no peito, falta de ar, tontura, desmaio ou dor intensa.
+- Em casos de dor, lesão, gravidez, medicamentos, menores de idade, doença ou emergência, oriente o usuário a procurar um profissional qualificado.
+- Use os dados do perfil apenas para contextualização geral e personalização informativa.
+- Caso o usuário peça algo fora do escopo, responda: "Posso te ajudar apenas com assuntos relacionados a treinos, academia e exercícios físicos."
+
+Formato da resposta:
+- Use português do Brasil.
+- Seja claro, direto e objetivo.
+- Evite respostas longas.
+- Responda preferencialmente em tópicos curtos.
+- Não ultrapasse 8 linhas, exceto se o usuário pedir detalhes.
+- Evite introduções desnecessárias.
+`;
+  }
+
   async getDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
     const usageRef = adminDb
@@ -85,12 +314,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Incrementa o uso diário de mensagens do usuário.
-   *
-   * A operação é feita em transação para evitar inconsistências
-   * caso várias mensagens sejam enviadas ao mesmo tempo.
-   */
   private async incrementDailyUsage(userId: string) {
     const todayKey = this.getTodayKey();
     const usageRef = adminDb
@@ -112,6 +335,7 @@ export class ChatService {
       }
 
       const newCount = currentCount + 1;
+
       transaction.set(
         usageRef,
         {
@@ -132,19 +356,38 @@ export class ChatService {
     });
   }
 
-  /**
-   * Busca os dados de perfil do usuário para personalizar
-   * as respostas da IA.
-   */
   private async getUserProfile(userId: string): Promise<UserProfile> {
     const userSnap = await adminDb.collection('users').doc(userId).get();
     if (!userSnap.exists) return {};
     return userSnap.data() as UserProfile;
   }
 
-  /**
-   * Cria uma nova conversa no Firestore.
-   */
+  private isRiskMessage(message: string): boolean {
+    const normalized = message
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    return (
+      this.RISK_TERMS.some((term) =>
+        normalized.includes(
+          term
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, ''),
+        ),
+      ) ||
+      this.RISK_KEYWORDS.some((keyword) =>
+        normalized.includes(
+          keyword
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, ''),
+        ),
+      )
+    );
+  }
+
   async createConversation(userId: string) {
     const convRef = adminDb
       .collection('users')
@@ -161,9 +404,6 @@ export class ChatService {
     return { conversationId: convRef.id };
   }
 
-  /**
-   * Lista todas as conversas do usuário, ordenadas pela mais recente.
-   */
   async getConversations(userId: string) {
     const snap = await adminDb
       .collection('users')
@@ -178,9 +418,6 @@ export class ChatService {
     }));
   }
 
-  /**
-   * Busca todas as mensagens de uma conversa específica.
-   */
   async getMessages(userId: string, conversationId: string) {
     const snap = await adminDb
       .collection('users')
@@ -197,12 +434,6 @@ export class ChatService {
     }));
   }
 
-  /**
-   * Envia uma mensagem para a IA e retorna a resposta completa.
-   *
-   * Também salva a mensagem do usuário, a resposta da IA,
-   * atualiza o uso diário e registra a conversa no Firestore.
-   */
   async sendMessage(
     userId: string,
     conversationId: string | null,
@@ -216,9 +447,7 @@ export class ChatService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    /**
-     * Recupera o perfil e o histórico para contextualizar a resposta da IA.
-     * */
+
     const userProfile = await this.getUserProfile(userId);
 
     let convId = conversationId;
@@ -241,6 +470,7 @@ export class ChatService {
             role: 'user' | 'model' | 'assistant';
             content: string;
           };
+
           return {
             role: data.role === 'assistant' ? 'model' : data.role,
             parts: [{ text: data.content }],
@@ -248,54 +478,7 @@ export class ChatService {
         })
       : [];
 
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      systemInstruction: `
-Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
-
-Dados do usuário atual:
-- Nome: ${userProfile.name ?? 'não informado'}
-- Idade: ${userProfile.age ?? 'não informada'}
-- Gênero: ${userProfile.gender ?? 'não informado'}
-- Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
-- Altura: ${userProfile.height ? userProfile.height + ' cm' : 'não informada'}
-- Objetivo: ${userProfile.goal ?? 'não informado'}
-- Restrições/Limitações: ${userProfile.limitations ?? 'nenhuma informada'}
-
-Use sempre essas informações para personalizar suas respostas. Adapte a intensidade, volume e escolha dos exercícios de acordo com a idade, objetivo e limitações do usuário.
-
-Responda apenas perguntas relacionadas a:
-- musculação;
-- academia;
-- exercícios físicos;
-- divisão de treinos;
-- execução de exercícios;
-- hipertrofia;
-- emagrecimento relacionado a treino;
-- condicionamento físico;
-- descanso entre séries;
-- segurança durante exercícios.
-
-Se o usuário perguntar algo fora desse tema, responda educadamente:
-"Posso te ajudar apenas com assuntos relacionados a treinos, academia e exercícios físicos."
-
-Não forneça diagnósticos médicos.
-Não substitua orientação de médicos, fisioterapeutas ou profissionais de educação física.
-Se houver dor, lesão grave ou condição médica, recomende procurar um profissional qualificado.
-
-Responda em português do Brasil, de forma clara, objetiva e amigável.
-    `,
-    });
-
-    try {
-      const result = await model.generateContent({
-        contents: [...history, { role: 'user', parts: [{ text: message }] }],
-      });
-
-      const answer = result.response.text();
-      /*
-       * Cria a conversa somente após uma resposta válida da IA.
-       */
+    if (this.isRiskMessage(message)) {
       if (!convId) {
         const created = await this.createConversation(userId);
         convId = created.conversationId;
@@ -310,20 +493,19 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       const messagesRef = convRef.collection('messages');
       const usage = await this.incrementDailyUsage(userId);
       const now = FieldValue.serverTimestamp();
-      const userMsgRef = messagesRef.doc();
-      const assistantMsgRef = messagesRef.doc();
 
-      await userMsgRef.set({ role: 'user', content: message, createdAt: now });
-      /*
-       * Pequeno atraso para reduzir chance de timestamps iguais entre mensagens.
-       */
+      await messagesRef.doc().set({
+        role: 'user',
+        content: message,
+        createdAt: now,
+      });
+
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const assistantNow = FieldValue.serverTimestamp();
-      await assistantMsgRef.set({
+      await messagesRef.doc().set({
         role: 'model',
-        content: answer,
-        createdAt: assistantNow,
+        content: this.SAFE_RESPONSE,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       const isFirstMessage: boolean = !historySnap || historySnap.empty;
@@ -338,7 +520,66 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         { merge: true },
       );
 
-      // Retorna convId (nunca null aqui) em vez de conversationId
+      return {
+        answer: this.SAFE_RESPONSE,
+        usage,
+        conversationId: convId,
+      };
+    }
+
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: this.buildSystemInstruction(userProfile),
+    });
+
+    try {
+      const result = await model.generateContent({
+        contents: [...history, { role: 'user', parts: [{ text: message }] }],
+      });
+
+      const answer = result.response.text();
+
+      if (!convId) {
+        const created = await this.createConversation(userId);
+        convId = created.conversationId;
+      }
+
+      const convRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId);
+
+      const messagesRef = convRef.collection('messages');
+      const usage = await this.incrementDailyUsage(userId);
+      const now = FieldValue.serverTimestamp();
+
+      await messagesRef.doc().set({
+        role: 'user',
+        content: message,
+        createdAt: now,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      await messagesRef.doc().set({
+        role: 'model',
+        content: answer,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      const isFirstMessage: boolean = !historySnap || historySnap.empty;
+
+      await convRef.set(
+        {
+          updatedAt: now,
+          ...(isFirstMessage && {
+            title: message.slice(0, 30) + (message.length > 30 ? '...' : ''),
+          }),
+        },
+        { merge: true },
+      );
+
       return { answer, usage, conversationId: convId };
     } catch (error: unknown) {
       if (error instanceof HttpException) throw error;
@@ -362,9 +603,6 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
     }
   }
 
-  /**
-   * Exclui uma conversa e suas mensagens associadas.
-   */
   async deleteConversation(userId: string, conversationId: string) {
     const convRef = adminDb
       .collection('users')
@@ -372,22 +610,17 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       .collection('conversations')
       .doc(conversationId);
 
-    // Deleta todas as mensagens da subcoleção primeiro
     const messagesSnap = await convRef.collection('messages').get();
     const batch = adminDb.batch();
+
     messagesSnap.docs.forEach((doc) => batch.delete(doc.ref));
     batch.delete(convRef);
+
     await batch.commit();
 
     return { success: true };
   }
 
-  /**
-   * Envia uma mensagem para a IA e retorna a resposta em streaming.
-   *
-   * A resposta é enviada ao frontend em pequenos trechos (chunks),
-   * permitindo exibição progressiva da mensagem na interface.
-   */
   async streamMessage(
     userId: string,
     conversationId: string | null,
@@ -398,7 +631,10 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
 
     if (currentUsage.used >= this.DAILY_LIMIT) {
       res.write(
-        `data: ${JSON.stringify({ error: 'Você atingiu o limite diário de mensagens. O limite será renovado após 00:00.' })}\n\n`,
+        `data: ${JSON.stringify({
+          error:
+            'Você atingiu o limite diário de mensagens. O limite será renovado após 00:00.',
+        })}\n\n`,
       );
       res.end();
       return;
@@ -426,6 +662,7 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
             role: 'user' | 'model' | 'assistant';
             content: string;
           };
+
           return {
             role: data.role === 'assistant' ? 'model' : data.role,
             parts: [{ text: data.content }],
@@ -433,43 +670,59 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         })
       : [];
 
+    if (this.isRiskMessage(message)) {
+      if (!convId) {
+        const created = await this.createConversation(userId);
+        convId = created.conversationId;
+      }
+
+      const convRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('conversations')
+        .doc(convId);
+
+      const messagesRef = convRef.collection('messages');
+      const usage = await this.incrementDailyUsage(userId);
+      const now = FieldValue.serverTimestamp();
+
+      await messagesRef.doc().set({
+        role: 'user',
+        content: message,
+        createdAt: now,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      await messagesRef.doc().set({
+        role: 'model',
+        content: this.SAFE_RESPONSE,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      const isFirstMessage: boolean = !historySnap || historySnap.empty;
+
+      await convRef.set(
+        {
+          updatedAt: now,
+          ...(isFirstMessage && {
+            title: message.slice(0, 30) + (message.length > 30 ? '...' : ''),
+          }),
+        },
+        { merge: true },
+      );
+
+      res.write(`data: ${JSON.stringify({ chunk: this.SAFE_RESPONSE })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ done: true, usage, conversationId: convId })}\n\n`,
+      );
+      res.end();
+      return;
+    }
+
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
-      systemInstruction: `
-Você é o GymProgress IA, um assistente especializado exclusivamente em academia, musculação, treinos, exercícios físicos, organização de fichas de treino e dúvidas relacionadas à prática segura de atividades físicas.
-
-Dados do usuário atual:
-- Nome: ${userProfile.name ?? 'não informado'}
-- Idade: ${userProfile.age ?? 'não informada'}
-- Gênero: ${userProfile.gender ?? 'não informado'}
-- Peso: ${userProfile.weight ? userProfile.weight + ' kg' : 'não informado'}
-- Altura: ${userProfile.height ? userProfile.height + ' cm' : 'não informada'}
-- Objetivo: ${userProfile.goal ?? 'não informado'}
-- Restrições/Limitações: ${userProfile.limitations ?? 'nenhuma informada'}
-
-Use sempre essas informações para personalizar suas respostas. Adapte a intensidade, volume e escolha dos exercícios de acordo com a idade, objetivo e limitações do usuário.
-
-Responda apenas perguntas relacionadas a:
-- musculação;
-- academia;
-- exercícios físicos;
-- divisão de treinos;
-- execução de exercícios;
-- hipertrofia;
-- emagrecimento relacionado a treino;
-- condicionamento físico;
-- descanso entre séries;
-- segurança durante exercícios.
-
-Se o usuário perguntar algo fora desse tema, responda educadamente:
-"Posso te ajudar apenas com assuntos relacionados a treinos, academia e exercícios físicos."
-
-Não forneça diagnósticos médicos.
-Não substitua orientação de médicos, fisioterapeutas ou profissionais de educação física.
-Se houver dor, lesão grave ou condição médica, recomende procurar um profissional qualificado.
-
-Responda em português do Brasil, de forma clara, objetiva e amigável.
-    `,
+      systemInstruction: this.buildSystemInstruction(userProfile),
     });
 
     try {
@@ -477,10 +730,8 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         contents: [...history, { role: 'user', parts: [{ text: message }] }],
       });
 
-      // Acumula a resposta completa para salvá-la no histórico ao final do stream.
       let fullAnswer = '';
 
-      // Envia cada trecho gerado pela IA para o frontend via SSE.
       for await (const chunk of streamResult.stream) {
         const text = chunk.text();
         fullAnswer += text;
@@ -502,10 +753,14 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
       const usage = await this.incrementDailyUsage(userId);
       const now = FieldValue.serverTimestamp();
 
-      await messagesRef
-        .doc()
-        .set({ role: 'user', content: message, createdAt: now });
+      await messagesRef.doc().set({
+        role: 'user',
+        content: message,
+        createdAt: now,
+      });
+
       await new Promise((resolve) => setTimeout(resolve, 50));
+
       await messagesRef.doc().set({
         role: 'model',
         content: fullAnswer,
@@ -524,12 +779,10 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         { merge: true },
       );
 
-      // Informa ao frontend que o stream terminou e envia os dados atualizados.
       res.write(
         `data: ${JSON.stringify({ done: true, usage, conversationId: convId })}\n\n`,
       );
       res.end();
-      // Retorna o erro pelo próprio stream para que o frontend trate a mensagem.
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -538,13 +791,19 @@ Responda em português do Brasil, de forma clara, objetiva e amigável.
         (error as { status: number }).status === 429
       ) {
         res.write(
-          `data: ${JSON.stringify({ error: 'O serviço de IA está temporariamente sobrecarregado. Tente novamente em alguns minutos.' })}\n\n`,
+          `data: ${JSON.stringify({
+            error:
+              'O serviço de IA está temporariamente sobrecarregado. Tente novamente em alguns minutos.',
+          })}\n\n`,
         );
       } else {
         res.write(
-          `data: ${JSON.stringify({ error: 'Erro ao consultar a IA. Tente novamente.' })}\n\n`,
+          `data: ${JSON.stringify({
+            error: 'Erro ao consultar a IA. Tente novamente.',
+          })}\n\n`,
         );
       }
+
       res.end();
     }
   }

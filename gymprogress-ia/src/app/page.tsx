@@ -4,13 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight, Dumbbell, Sparkles } from "lucide-react";
 import { LoginModal } from "@/components/modals/LoginModal";
-import { ForgotPasswordModal } from "@/components/modals/ForgotPasswordModal";
 import { RegisterModal } from "@/components/modals/RegisterModal";
 import Image from "next/image";
 
 export default function Home() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
 
   return (
@@ -81,20 +79,10 @@ export default function Home() {
         onClose={() => setIsLoginOpen(false)}
         onForgotPassword={() => {
           setIsLoginOpen(false);
-          setIsForgotPasswordOpen(true);
         }}
         onRegister={() => {
           setIsLoginOpen(false);
           setIsRegisterOpen(true);
-        }}
-      />
-
-      <ForgotPasswordModal
-        isOpen={isForgotPasswordOpen}
-        onClose={() => setIsForgotPasswordOpen(false)}
-        onBackToLogin={() => {
-          setIsForgotPasswordOpen(false);
-          setIsLoginOpen(true);
         }}
       />
 

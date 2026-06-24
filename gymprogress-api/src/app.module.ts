@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { WorkoutModule } from './workout/workout.module';
+import { AccountModule } from './account/account.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { WorkoutModule } from './workout/workout.module';
     }),
     ChatModule,
     WorkoutModule,
+    AccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -11,7 +11,11 @@ type DailyUsage = {
 };
 
 type UseDashboardAuthParams = {
-  loadProfile: (data: ProfileData, profileCompleted?: boolean) => void;
+  loadProfile: (
+    data: ProfileData,
+    profileCompleted?: boolean,
+    privacyAccepted?: boolean,
+  ) => void;
   loadConversations: (token: string, activeId?: string) => Promise<void>;
 };
 
@@ -52,16 +56,20 @@ export function useDashboardAuth({
 
       const token = await user.getIdToken();
 
-      const usageResponse = await fetch("http://localhost:3001/chat/usage", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      try {
+        const usageResponse = await fetch("http://localhost:3001/chat/usage", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-      if (usageResponse.ok) {
-        const usageData = await usageResponse.json();
-        setDailyUsage(usageData);
+        if (usageResponse.ok) {
+          const usageData = await usageResponse.json();
+          setDailyUsage(usageData);
+        }
+
+        await loadConversations(token);
+      } catch {
+        console.error("Não foi possível conectar ao backend.");
       }
-
-      await loadConversations(token);
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -72,15 +80,36 @@ export function useDashboardAuth({
         setUserName(data.name ?? user.displayName ?? "");
 
         const loadedProfile: ProfileData = {
-          age: data.age ?? "",
+          birthDate: data.birthDate ?? "",
           gender: data.gender ?? "",
-          weight: data.weight ?? "",
-          height: data.height ?? "",
+          weight:
+            data.weight !== undefined && data.weight !== null
+              ? String(data.weight)
+              : "",
+          height:
+            data.height !== undefined && data.height !== null
+              ? String(data.height)
+              : "",
+          bmi:
+            data.bmi !== undefined && data.bmi !== null ? String(data.bmi) : "",
+          bmiClassification: data.bmiClassification ?? "",
+          experienceLevel: data.experienceLevel ?? "",
           goal: data.goal ?? "",
+          customGoal: data.customGoal ?? "",
+          hasLimitations:
+            data.hasLimitations === true
+              ? "sim"
+              : data.hasLimitations === false
+                ? "nao"
+                : "",
           limitations: data.limitations ?? "",
         };
 
-        loadProfile(loadedProfile, data.profileCompleted);
+        loadProfile(
+          loadedProfile,
+          data.profileCompleted,
+          data.privacyAccepted === true,
+        );
       }
 
       setIsCheckingAuth(false);

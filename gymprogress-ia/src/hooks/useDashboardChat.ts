@@ -67,7 +67,7 @@ export function useDashboardChat({
         // Adiciona uma resposta vazia da IA que será preenchida pelo stream.
         setChatMessages((current) => [
           ...current,
-          { role: "assistant", content: "" },
+          { role: "assistant", content: "", isComplete: false },
         ]);
 
         const response = await fetch("http://localhost:3001/chat/stream", {
@@ -138,12 +138,23 @@ export function useDashboardChat({
                   updated[updated.length - 1] = {
                     role: "assistant",
                     content: updated[updated.length - 1].content + parsed.chunk,
+                    isComplete: false,
                   };
                   return updated;
                 });
               }
 
               if (parsed.done) {
+                setChatMessages((current) => {
+                  const updated = [...current];
+
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    isComplete: true,
+                  };
+
+                  return updated;
+                });
                 if (parsed.conversationId) {
                   setActiveConversationId(parsed.conversationId);
                 }

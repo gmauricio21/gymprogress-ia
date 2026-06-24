@@ -4,6 +4,7 @@ import { auth } from "@/lib/firebase";
 export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  isComplete?: boolean;
 };
 
 export type Conversation = {
@@ -83,6 +84,7 @@ export function useDashboardConversations() {
           messages.map((m: { role: string; content: string }) => ({
             role: m.role as "user" | "assistant",
             content: m.content,
+            isComplete: true,
           })),
         );
       }

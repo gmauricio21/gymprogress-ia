@@ -13,12 +13,7 @@ type LoginModalProps = {
   onRegister: () => void;
 };
 
-export function LoginModal({
-  isOpen,
-  onClose,
-  onForgotPassword,
-  onRegister,
-}: LoginModalProps) {
+export function LoginModal({ isOpen, onClose, onRegister }: LoginModalProps) {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -196,17 +191,6 @@ export function LoginModal({
               <label className="block text-sm font-medium text-zinc-300">
                 Senha
               </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  resetForm();
-                  onForgotPassword();
-                }}
-                className="cursor-pointer text-sm font-medium text-emerald-400 hover:text-emerald-300 hover:underline"
-              >
-                Esqueci minha senha
-              </button>
             </div>
 
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900 px-4 py-3">

@@ -12,8 +12,10 @@ import { useDashboardProfile } from "@/hooks/useDashboardProfile";
 import { useDashboardConversations } from "@/hooks/useDashboardConversations";
 import { useDashboardChat } from "@/hooks/useDashboardChat";
 import { useDashboardAuth } from "@/hooks/useDashboardAuth";
+import { PrivacyModal } from "@/components/modals/PrivacyModal";
 import { ProfileModal } from "@/components/modals/ProfileModal";
 import { WorkoutModal } from "@/components/modals/WorkoutModal";
+import { auth } from "@/lib/firebase";
 import {
   ClipboardList,
   Dumbbell,
@@ -25,11 +27,19 @@ import {
   Sparkles,
   User,
   Trash2,
+  Settings,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const { sidebarOpen, setSidebarOpen } = useResponsiveSidebar();
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
 
   const {
     message,
@@ -44,11 +54,13 @@ export default function DashboardPage() {
   const {
     profile,
     setProfile,
+    showPrivacyModal,
     showWelcomeModal,
     setShowWelcomeModal,
     showProfileModal,
     setShowProfileModal,
     loadProfile,
+    handleAcceptPrivacy,
     handleSaveProfile,
     handleCloseProfileModal,
   } = profileHook;
@@ -90,6 +102,41 @@ export default function DashboardPage() {
     });
 
   const messagesEndRef = useScrollToBottom(chatMessages);
+
+  async function handleDeleteAccount() {
+    const user = auth.currentUser;
+
+    if (!user) {
+      setDeleteAccountError(
+        "Sessão expirada. Entre novamente para excluir a conta.",
+      );
+      return;
+    }
+
+    try {
+      setIsDeletingAccount(true);
+      setDeleteAccountError("");
+
+      const token = await user.getIdToken();
+
+      const response = await fetch("http://localhost:3001/account", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao excluir conta.");
+      }
+
+      await auth.signOut();
+      window.location.href = "/";
+    } catch {
+      setIsDeletingAccount(false);
+      setDeleteAccountError("Não foi possível excluir a conta agora.");
+    }
+  }
 
   if (isCheckingAuth) {
     return (
@@ -197,10 +244,31 @@ export default function DashboardPage() {
           </div>
 
           <div className="border-t border-white/10 p-3">
-            <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+            <div className="relative flex items-center gap-3 rounded-xl px-2 py-2">
+              {showAccountMenu && (
+                <div className="absolute bottom-full left-2 mb-2 w-44 rounded-2xl border border-white/10 bg-zinc-950 p-1.5 shadow-2xl shadow-black/40">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      setShowAccountModal(true);
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-200 transition hover:bg-white/10"
+                  >
+                    <Settings className="h-4 w-4 text-emerald-400" />
+                    Conta
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                aria-label="Abrir opcoes da conta"
+                onClick={() => setShowAccountMenu((open) => !open)}
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 transition hover:bg-emerald-500/20 hover:text-emerald-300"
+              >
                 <User className="h-4 w-4" />
-              </div>
+              </button>
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
@@ -317,53 +385,76 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     <div className="w-full max-w-none text-sm leading-6 text-zinc-200">
-                      <ReactMarkdown
-                        components={{
-                          h1: ({ children }) => (
-                            <h1 className="mb-3 text-xl font-bold">
-                              {children}
-                            </h1>
-                          ),
-                          h2: ({ children }) => (
-                            <h2 className="mb-3 text-lg font-bold">
-                              {children}
-                            </h2>
-                          ),
-                          h3: ({ children }) => (
-                            <h3 className="mb-2 text-base font-bold">
-                              {children}
-                            </h3>
-                          ),
-                          p: ({ children }) => (
-                            <p className="mb-3 leading-6 last:mb-0">
-                              {children}
-                            </p>
-                          ),
-                          ul: ({ children }) => (
-                            <ul className="mb-3 list-disc space-y-1.5 pl-5">
-                              {children}
-                            </ul>
-                          ),
-                          ol: ({ children }) => (
-                            <ol className="mb-3 list-decimal space-y-1.5 pl-5">
-                              {children}
-                            </ol>
-                          ),
-                          li: ({ children }) => (
-                            <li className="leading-6 [&>p]:mb-0">{children}</li>
-                          ),
-                          strong: ({ children }) => (
-                            <strong className="font-semibold text-white">
-                              {children}
-                            </strong>
-                          ),
-                          hr: () => (
-                            <div className="my-2 border-t border-white/10" />
-                          ),
-                        }}
-                      >
-                        {normalizeMarkdown(chatMessage.content)}
-                      </ReactMarkdown>
+                      {!chatMessage.content ? (
+                        <div className="flex items-center gap-1 px-1 py-2">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.3s]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.15s]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400" />
+                        </div>
+                      ) : (
+                        <>
+                          <ReactMarkdown
+                            components={{
+                              h1: ({ children }) => (
+                                <h1 className="mb-3 text-xl font-bold">
+                                  {children}
+                                </h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className="mb-3 text-lg font-bold">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className="mb-2 text-base font-bold">
+                                  {children}
+                                </h3>
+                              ),
+                              p: ({ children }) => (
+                                <p className="mb-3 leading-6 last:mb-0">
+                                  {children}
+                                </p>
+                              ),
+                              ul: ({ children }) => (
+                                <ul className="mb-3 list-disc space-y-1.5 pl-5">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="mb-3 list-decimal space-y-1.5 pl-5">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({ children }) => (
+                                <li className="leading-6 [&>p]:mb-0">
+                                  {children}
+                                </li>
+                              ),
+                              strong: ({ children }) => (
+                                <strong className="font-semibold text-white">
+                                  {children}
+                                </strong>
+                              ),
+                              hr: () => (
+                                <div className="my-2 border-t border-white/10" />
+                              ),
+                            }}
+                          >
+                            {normalizeMarkdown(chatMessage.content)}
+                          </ReactMarkdown>
+
+                          {chatMessage.isComplete &&
+                            !chatMessage.content.startsWith(
+                              "⚠️ Esta plataforma possui caráter exclusivamente informativo",
+                            ) && (
+                              <p className="mt-3 text-xs font-medium text-amber-400">
+                                ⚠️ Resposta informativa. Não substitui
+                                orientação médica ou profissional de Educação
+                                Física.
+                              </p>
+                            )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -426,13 +517,22 @@ export default function DashboardPage() {
               </div>
             </div>
             <p className="mt-2 text-center text-xs text-zinc-600">
-              GymProgress é uma IA e pode cometer erros. Por favor, verifique as
-              respostas.
+              <span className="sm:hidden">
+                IA informativa. Não substitui profissionais.
+              </span>
+
+              <span className="hidden sm:inline">
+                IA informativa. Não substitui orientação médica ou profissional.
+              </span>
             </p>
           </form>
         </div>
       </main>
 
+      <PrivacyModal
+        isOpen={showPrivacyModal}
+        onAccept={() => handleAcceptPrivacy(userId)}
+      />
       <ProfileModal
         isOpen={showProfileModal}
         mode="profile"
@@ -454,11 +554,147 @@ export default function DashboardPage() {
         onClose={() => setShowWorkoutModal(false)}
       />
 
-      {conversationToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      {showAccountModal && (
+        <div
+          onClick={() => setShowAccountModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm"
+        >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
+            className="my-auto w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Conta</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Gerencie seus dados e a exclusão da sua conta.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                aria-label="Fechar"
+                onClick={() => setShowAccountModal(false)}
+                className="cursor-pointer rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-300"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Nome
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">
+                  {userName || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  E-mail
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">
+                  {userEmail || "Não informado"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+                  <Trash2 className="h-4 w-4" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-white">
+                    Excluir conta
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-white">
+                    Remove sua conta do GymProgress IA de forma permanente.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteAccountError("");
+                  setShowAccountModal(false);
+                  setShowDeleteAccountModal(true);
+                }}
+                className="mt-4 w-full cursor-pointer rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteAccountModal && (
+        <div
+          onClick={() => {
+            if (!isDeletingAccount) setShowDeleteAccountModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="my-auto w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-500/10 text-red-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  Tem certeza que deseja excluir a conta?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                  Essa ação é permanente. Seu acesso será encerrado, seus dados
+                  de perfil serão removidos e não será possível recuperar a
+                  conta depois da confirmação.
+                </p>
+              </div>
+            </div>
+
+            {deleteAccountError && (
+              <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {deleteAccountError}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(false)}
+                disabled={isDeletingAccount}
+                className="flex-1 cursor-pointer rounded-full border border-white/10 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={isDeletingAccount}
+                className="flex-1 cursor-pointer rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+              >
+                {isDeletingAccount ? "Excluindo..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {conversationToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="my-auto w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
           >
             <h2 className="text-lg font-bold text-white">Excluir Chat?</h2>
 
