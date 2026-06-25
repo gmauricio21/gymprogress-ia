@@ -71,7 +71,7 @@ npm run start:dev
 
 ## Autor
 
-Gabriel Maurício
+Gabriel Maurício da Silva
 
 Trabalho de Conclusão de Curso (TCC)
-GymProgress IA: Plataforma Inteligente para Acompanhamento de Treinos com Inteligência Artificial.
+GymProgress IA: Plataforma web para organização dos treinos com integração a Inteligência Artificial generativa.
