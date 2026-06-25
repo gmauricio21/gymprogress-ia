@@ -3,11 +3,11 @@
 <p align="center">
   <picture>
     <source
-      srcset="./docs/logo-dark.png"
+      srcset="./docs/LogoGymProgressIADark.png"
       media="(prefers-color-scheme: dark)"
     />
     <img
-      src="./docs/logo-light.png"
+      src="./docs/LogoGymProgressIALight.png"
       alt="GymProgress IA"
       width="500"
     />
