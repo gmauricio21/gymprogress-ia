@@ -19,6 +19,8 @@ type ChatBody = {
   conversationId: string | null;
 };
 
+const MAX_MESSAGE_LENGTH = 2000;
+
 /**
  * Controlador responsável pelo gerenciamento das conversas com a IA.
  *
@@ -108,6 +110,12 @@ export class ChatController {
       throw new BadRequestException('Mensagem é obrigatória.');
     }
 
+    if (body.message.trim().length > MAX_MESSAGE_LENGTH) {
+      throw new BadRequestException(
+        'A mensagem deve ter no máximo 2.000 caracteres.',
+      );
+    }
+
     const userId = await this.getUserId(authorization);
     return this.chatService.sendMessage(
       userId,
@@ -130,7 +138,16 @@ export class ChatController {
     @Headers('authorization') authorization?: string,
   ) {
     if (!body?.message || !body.message.trim()) {
-      res.status(400).json({ message: 'Mensagem é obrigatória.' });
+      res.status(400).json({
+        message: 'Mensagem é obrigatória.',
+      });
+      return;
+    }
+
+    if (body.message.trim().length > MAX_MESSAGE_LENGTH) {
+      res.status(400).json({
+        message: 'A mensagem deve ter no máximo 2.000 caracteres.',
+      });
       return;
     }
 

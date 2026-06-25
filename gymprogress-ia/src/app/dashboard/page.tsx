@@ -484,6 +484,7 @@ export default function DashboardPage() {
                   id="prompt"
                   value={message}
                   rows={1}
+                  maxLength={2000}
                   onChange={(e) => handleMessageChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {

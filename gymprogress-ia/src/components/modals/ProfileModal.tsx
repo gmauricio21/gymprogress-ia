@@ -553,6 +553,7 @@ export function ProfileModal({
               {profile.goal === "outros" && (
                 <textarea
                   placeholder="Descreva seu objetivo..."
+                  maxLength={100}
                   value={profile.customGoal ?? ""}
                   onChange={(e) => updateField("customGoal", e.target.value)}
                   className={[
@@ -631,6 +632,7 @@ export function ProfileModal({
                   </label>
                   <textarea
                     placeholder="Ex.: dor no joelho, lesão no ombro, hérnia de disco..."
+                    maxLength={300}
                     value={profile.limitations ?? ""}
                     onChange={(e) => updateField("limitations", e.target.value)}
                     className={[

@@ -23,11 +23,11 @@ type Exercise = {
   id: string;
   name: string;
   muscle?: string;
-  load?: string;
-  sets?: string;
-  reps?: string;
-  rest?: string;
-  duration?: string;
+  load?: number;
+  sets?: number;
+  reps?: number;
+  rest?: number;
+  duration?: number;
   notes?: string;
 };
 
@@ -421,11 +421,14 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     setExForm({
       name: ex.name,
       muscle: ex.muscle ?? "",
-      load: ex.load ?? "",
-      sets: ex.sets ?? "",
-      reps: ex.reps ?? "",
-      rest: ex.rest ?? "",
-      duration: ex.duration ?? "",
+      load: ex.load !== undefined && ex.load !== null ? String(ex.load) : "",
+      sets: ex.sets !== undefined && ex.sets !== null ? String(ex.sets) : "",
+      reps: ex.reps !== undefined && ex.reps !== null ? String(ex.reps) : "",
+      rest: ex.rest !== undefined && ex.rest !== null ? String(ex.rest) : "",
+      duration:
+        ex.duration !== undefined && ex.duration !== null
+          ? String(ex.duration)
+          : "",
       notes: ex.notes ?? "",
       noLoad: !ex.load,
     });
@@ -439,11 +442,14 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
     setExForm({
       name: ex.name,
       muscle: ex.muscle ?? "",
-      load: ex.load ?? "",
-      sets: ex.sets ?? "",
-      reps: ex.reps ?? "",
-      rest: ex.rest ?? "",
-      duration: ex.duration ?? "",
+      load: ex.load !== undefined && ex.load !== null ? String(ex.load) : "",
+      sets: ex.sets !== undefined && ex.sets !== null ? String(ex.sets) : "",
+      reps: ex.reps !== undefined && ex.reps !== null ? String(ex.reps) : "",
+      rest: ex.rest !== undefined && ex.rest !== null ? String(ex.rest) : "",
+      duration:
+        ex.duration !== undefined && ex.duration !== null
+          ? String(ex.duration)
+          : "",
       notes: ex.notes ?? "",
       noLoad: !ex.load,
     });
@@ -707,6 +713,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                           : "border-white/10"
                       }`}
                       placeholder="Nome do treino"
+                      maxLength={100}
                       value={workoutName}
                       onChange={(e) => {
                         setWorkoutName(e.target.value);
@@ -722,6 +729,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                           : "border-white/10"
                       }`}
                       placeholder="Objetivo"
+                      maxLength={100}
                       value={workoutGoal}
                       onChange={(e) => {
                         setWorkoutGoal(e.target.value);
@@ -865,6 +873,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                       divisionError ? "border-red-500" : "border-white/10"
                     }`}
                     placeholder="Nome da divisão (ex.: Peito e Tríceps)"
+                    maxLength={100}
                     value={divisionName}
                     onChange={(e) => {
                       setDivisionName(e.target.value);
@@ -1005,6 +1014,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                     <input
                       className={inputClass}
                       placeholder="Exercício (ex.: Supino)"
+                      maxLength={100}
                       value={exForm.name}
                       onChange={(e) =>
                         setExForm({ ...exForm, name: e.target.value })
@@ -1013,6 +1023,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                     <input
                       className={inputClass}
                       placeholder="Músculo (ex.: Peito)"
+                      maxLength={50}
                       value={exForm.muscle}
                       onChange={(e) =>
                         setExForm({ ...exForm, muscle: e.target.value })
@@ -1045,7 +1056,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                     />
                     <input
                       className={inputClass}
-                      placeholder="Descanso (ex.: 60s)"
+                      placeholder="Descanso (segundos)"
                       value={exForm.rest}
                       onChange={(e) =>
                         setExForm({ ...exForm, rest: e.target.value })
@@ -1077,6 +1088,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                   <textarea
                     className={textareaClass}
                     placeholder="Observações (técnica, variações, etc.)"
+                    maxLength={500}
                     value={exForm.notes}
                     onChange={(e) =>
                       setExForm({ ...exForm, notes: e.target.value })
@@ -1125,7 +1137,7 @@ export function WorkoutModal({ isOpen, onClose }: WorkoutModalProps) {
                                 ex.sets && `${ex.sets} séries`,
                                 ex.reps && `${ex.reps} reps`,
                                 ex.duration && `${ex.duration}`,
-                                ex.rest && `${ex.rest} descanso`,
+                                ex.rest && `${ex.rest}s de descanso`,
                                 ex.load && `${ex.load} kg`,
                               ]
                                 .filter(Boolean)

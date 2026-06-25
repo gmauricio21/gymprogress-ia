@@ -13,6 +13,27 @@ import { adminDb } from '../firebase-admin';
  */
 @Injectable()
 export class WorkoutService {
+  private toNumber(value?: string | number): number | null {
+    if (value === undefined || value === null || value === '') return null;
+
+    const numberValue =
+      typeof value === 'number'
+        ? value
+        : Number(String(value).replace(',', '.'));
+
+    return Number.isFinite(numberValue) ? numberValue : null;
+  }
+
+  private validateText(value: string | undefined, field: string, max: number) {
+    if (!value) return;
+
+    if (value.trim().length > max) {
+      throw new HttpException(
+        `${field} deve ter no máximo ${max} caracteres.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
   // ─── TREINOS ───────────────────────────────────────────
   /**
    * Lista todas as fichas de treino do usuário,
@@ -39,6 +60,9 @@ export class WorkoutService {
       .collection('workouts')
       .doc();
 
+    this.validateText(name, 'Nome da ficha', 100);
+    this.validateText(goal, 'Objetivo da ficha', 100);
+
     await ref.set({
       name,
       goal,
@@ -63,6 +87,9 @@ export class WorkoutService {
       .doc(userId)
       .collection('workouts')
       .doc(workoutId);
+
+    this.validateText(name, 'Nome da ficha', 100);
+    this.validateText(goal, 'Objetivo da ficha', 100);
 
     await ref.set(
       { name, goal, updatedAt: FieldValue.serverTimestamp() },
@@ -129,6 +156,8 @@ export class WorkoutService {
       .collection('divisions')
       .doc();
 
+    this.validateText(name, 'Nome da divisão', 100);
+
     await ref.set({
       name,
       createdAt: FieldValue.serverTimestamp(),
@@ -153,6 +182,8 @@ export class WorkoutService {
       .doc(workoutId)
       .collection('divisions')
       .doc(divisionId);
+
+    this.validateText(name, 'Nome da divisão', 100);
 
     await ref.set(
       { name, updatedAt: FieldValue.serverTimestamp() },
@@ -216,11 +247,11 @@ export class WorkoutService {
     data: {
       name: string;
       muscle?: string;
-      load?: string;
-      sets?: string;
-      reps?: string;
-      rest?: string;
-      duration?: string;
+      load?: string | number;
+      sets?: string | number;
+      reps?: string | number;
+      rest?: string | number;
+      duration?: string | number;
       notes?: string;
     },
   ) {
@@ -234,8 +265,17 @@ export class WorkoutService {
       .collection('exercises')
       .doc();
 
+    this.validateText(data.name, 'Nome do exercício', 100);
+    this.validateText(data.muscle, 'Grupo muscular', 50);
+    this.validateText(data.notes, 'Observações', 500);
+
     await ref.set({
       ...data,
+      load: this.toNumber(data.load),
+      sets: this.toNumber(data.sets),
+      reps: this.toNumber(data.reps),
+      rest: this.toNumber(data.rest),
+      duration: this.toNumber(data.duration),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -254,11 +294,11 @@ export class WorkoutService {
     data: {
       name?: string;
       muscle?: string;
-      load?: string;
-      sets?: string;
-      reps?: string;
-      rest?: string;
-      duration?: string;
+      load?: string | number;
+      sets?: string | number;
+      reps?: string | number;
+      rest?: string | number;
+      duration?: string | number;
       notes?: string;
     },
   ) {
@@ -272,8 +312,20 @@ export class WorkoutService {
       .collection('exercises')
       .doc(exerciseId);
 
+    this.validateText(data.name, 'Nome do exercício', 100);
+    this.validateText(data.muscle, 'Grupo muscular', 50);
+    this.validateText(data.notes, 'Observações', 500);
+
     await ref.set(
-      { ...data, updatedAt: FieldValue.serverTimestamp() },
+      {
+        ...data,
+        load: this.toNumber(data.load),
+        sets: this.toNumber(data.sets),
+        reps: this.toNumber(data.reps),
+        rest: this.toNumber(data.rest),
+        duration: this.toNumber(data.duration),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       { merge: true },
     );
 
@@ -358,11 +410,11 @@ export class WorkoutService {
         const ex = exDoc.data() as {
           name: string;
           muscle?: string;
-          load?: string;
-          sets?: string;
-          reps?: string;
-          rest?: string;
-          duration?: string;
+          load?: number;
+          sets?: number;
+          reps?: number;
+          rest?: number;
+          duration?: number;
           notes?: string;
         };
 

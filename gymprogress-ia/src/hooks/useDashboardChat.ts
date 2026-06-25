@@ -51,6 +51,18 @@ export function useDashboardChat({
       const trimmedMessage = message.trim();
       if (!trimmedMessage || isSendingMessage) return;
 
+      if (trimmedMessage.length > 2000) {
+        setChatMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: "A mensagem deve ter no máximo 2.000 caracteres.",
+            isComplete: true,
+          },
+        ]);
+        return;
+      }
+
       setChatMessages((current) => [
         ...current,
         { role: "user", content: trimmedMessage },
